@@ -1,7 +1,6 @@
 /**
  * Vercel Serverless Function — /api/chat
  * Calls Claude via SAP AI Core Orchestration Service
- * Uses the existing orchestration deployment — no new deployment needed
  */
 
 let tokenCache = { token: null, expiresAt: 0 }
@@ -29,7 +28,7 @@ async function getSapToken() {
   return tokenCache.token
 }
 
-// SAP model name mapping — format is anthropic--model-name
+// SAP model name mapping
 const MODEL_MAP = {
   'claude-haiku-4-5-20251001': 'anthropic--claude-4-5-haiku',
   'claude-sonnet-4-6':         'anthropic--claude-4-6-sonnet',
@@ -73,21 +72,43 @@ export default async function handler(req, res) {
   const deploymentId  = process.env.SAP_ORCHESTRATION_DEPLOYMENT_ID
 
   if (!deploymentId) {
-    return res.status(500).json({ error: 'SAP_ORCHESTRATION_DEPLOYMENT_ID not set. Add it to Vercel environment variables.' })
+    return res.status(500).json({ error: 'SAP_ORCHESTRATION_DEPLOYMENT_ID not set.' })
   }
 
   try {
     const token = await getSapToken()
 
+    // Try all known URL patterns for SAP orchestration
+    const urlsToTry = [
+      `${apiUrl}/v2/inference/deployments/${deploymentId}/completion`,
+      `${apiUrl}/v2/inference/deployments/${deploymentId}/chat/completions`,
+      `${apiUrl}/v2/inference/deployments/${deploymentId}/invoke`,
+    ]
+
+    // Orchestration service payload format
     const payload = {
-      model:      sapModelName,
-      messages:   [{ role: 'system', content: system }, ...messages],
-      max_tokens: 4096,
+      orchestration_config: {
+        module_configurations: {
+          llm_module_config: {
+            model_name:    sapModelName,
+            model_version: "latest",
+            model_params: {
+              max_tokens: 4096,
+            }
+          }
+        }
+      },
+      input_params: {},
+      messages_history: messages,
+      template: {
+        role:    "system",
+        content: system,
+      }
     }
 
-    const aiResp = await fetch(
-      `${apiUrl}/v2/inference/deployments/${deploymentId}/v1/chat/completions`,
-      {
+    let lastError = null
+    for (const url of urlsToTry) {
+      const aiResp = await fetch(url, {
         method:  'POST',
         headers: {
           Authorization:       `Bearer ${token}`,
@@ -95,17 +116,28 @@ export default async function handler(req, res) {
           'Content-Type':      'application/json',
         },
         body: JSON.stringify(payload),
-      }
-    )
+      })
 
-    if (!aiResp.ok) {
-      const text = await aiResp.text()
-      return res.status(502).json({ error: `SAP error ${aiResp.status}: ${text.slice(0, 300)}` })
+      if (aiResp.status === 404) { lastError = `404 at ${url}`; continue }
+
+      if (!aiResp.ok) {
+        const text = await aiResp.text()
+        return res.status(502).json({ error: `SAP error ${aiResp.status}: ${text.slice(0, 300)}` })
+      }
+
+      const result = await aiResp.json()
+      // Handle both orchestration and standard response formats
+      const reply =
+        result.orchestration_result?.choices?.[0]?.message?.content ||
+        result.choices?.[0]?.message?.content ||
+        result.completion ||
+        result.output ||
+        JSON.stringify(result).slice(0, 500)
+
+      return res.status(200).json({ reply, model_used: sapModelName })
     }
 
-    const result = await aiResp.json()
-    const reply  = result.choices?.[0]?.message?.content || 'No response received.'
-    return res.status(200).json({ reply, model_used: sapModelName })
+    return res.status(404).json({ error: `Could not find working endpoint. Last error: ${lastError}` })
 
   } catch (err) {
     console.error('Chat error:', err)
