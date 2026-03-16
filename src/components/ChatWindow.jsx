@@ -6,9 +6,44 @@ import MessageBubble from './MessageBubble'
 const API_URL = '/api/chat'
 
 const MODELS = [
-  { id:'claude-haiku-4-5-20251001', label:'Haiku 4.5',  desc:'Fast & cheap',    color:'#22c55e' },
-  { id:'claude-sonnet-4-6',         label:'Sonnet 4.6', desc:'Balanced',         color:'#4e7fff' },
-  { id:'claude-opus-4-6',           label:'Opus 4.6',   desc:'Most powerful',    color:'#a855f7' },
+  // Claude 4.6
+  { id:'claude-46-sonnet',      label:'Sonnet 4.6',          desc:'Latest · Balanced',        color:'#4e7fff', group:'Claude 4.6'   },
+  { id:'claude-46-opus',        label:'Opus 4.6',            desc:'Latest · Most powerful',   color:'#a855f7', group:'Claude 4.6'   },
+  // Claude 4.5
+  { id:'claude-45-haiku',       label:'Haiku 4.5',           desc:'Fast & cheap',             color:'#22c55e', group:'Claude 4.5'   },
+  { id:'claude-45-sonnet',      label:'Sonnet 4.5',          desc:'Balanced',                 color:'#60a5fa', group:'Claude 4.5'   },
+  { id:'claude-45-opus',        label:'Opus 4.5',            desc:'Most powerful',            color:'#c084fc', group:'Claude 4.5'   },
+  // Claude 3.x
+  { id:'claude-37-sonnet',      label:'Sonnet 3.7',          desc:'Extended thinking',        color:'#f59e0b', group:'Claude 3'     },
+  { id:'claude-35-sonnet',      label:'Sonnet 3.5',          desc:'Classic favourite',        color:'#fb923c', group:'Claude 3'     },
+  { id:'claude-3-haiku',        label:'Haiku 3',             desc:'Fastest & cheapest',       color:'#34d399', group:'Claude 3'     },
+  // GPT
+  { id:'gpt-5',                 label:'GPT-5',               desc:'Latest OpenAI',            color:'#10b981', group:'OpenAI'       },
+  { id:'gpt-5-mini',            label:'GPT-5 Mini',          desc:'Fast GPT-5',               color:'#34d399', group:'OpenAI'       },
+  { id:'gpt-4o',                label:'GPT-4o',              desc:'Multimodal',               color:'#6ee7b7', group:'OpenAI'       },
+  { id:'gpt-4o-mini',           label:'GPT-4o Mini',         desc:'Fast & affordable',        color:'#a7f3d0', group:'OpenAI'       },
+  { id:'gpt-41',                label:'GPT-4.1',             desc:'Latest GPT-4',             color:'#059669', group:'OpenAI'       },
+  { id:'gpt-41-mini',           label:'GPT-4.1 Mini',        desc:'Efficient',                color:'#047857', group:'OpenAI'       },
+  { id:'gpt-41-nano',           label:'GPT-4.1 Nano',        desc:'Cheapest OpenAI',          color:'#065f46', group:'OpenAI'       },
+  { id:'o3',                    label:'o3',                  desc:'Advanced reasoning',       color:'#0ea5e9', group:'OpenAI'       },
+  { id:'o3-mini',               label:'o3 Mini',             desc:'Efficient reasoning',      color:'#38bdf8', group:'OpenAI'       },
+  { id:'o4-mini',               label:'o4 Mini',             desc:'Latest reasoning',         color:'#7dd3fc', group:'OpenAI'       },
+  // Gemini
+  { id:'gemini-25-pro',         label:'Gemini 2.5 Pro',      desc:'Best Gemini',              color:'#f43f5e', group:'Google'       },
+  { id:'gemini-25-flash',       label:'Gemini 2.5 Flash',    desc:'Fast & smart',             color:'#fb7185', group:'Google'       },
+  { id:'gemini-25-flash-lite',  label:'2.5 Flash Lite',      desc:'Cheapest Gemini',          color:'#fda4af', group:'Google'       },
+  { id:'gemini-20-flash',       label:'Gemini 2.0 Flash',    desc:'Reliable',                 color:'#fecdd3', group:'Google'       },
+  { id:'gemini-20-flash-lite',  label:'2.0 Flash Lite',      desc:'Budget option',            color:'#ffe4e6', group:'Google'       },
+  // Mistral
+  { id:'mistral-large',         label:'Mistral Large',       desc:'Most capable',             color:'#f97316', group:'Mistral'      },
+  { id:'mistral-medium',        label:'Mistral Medium',      desc:'Balanced',                 color:'#fb923c', group:'Mistral'      },
+  { id:'mistral-small',         label:'Mistral Small',       desc:'Fast & cheap',             color:'#fdba74', group:'Mistral'      },
+  // Amazon Nova
+  { id:'nova-pro',              label:'Nova Pro',            desc:'Most capable Nova',        color:'#f59e0b', group:'Amazon Nova'  },
+  { id:'nova-lite',             label:'Nova Lite',           desc:'Balanced',                 color:'#fbbf24', group:'Amazon Nova'  },
+  { id:'nova-micro',            label:'Nova Micro',          desc:'Fastest & cheapest',       color:'#fcd34d', group:'Amazon Nova'  },
+  // Meta
+  { id:'llama3-70b',            label:'Llama 3 70B',         desc:'Open source',              color:'#8b5cf6', group:'Meta'         },
 ]
 
 const FILE_ICONS = {
@@ -54,7 +89,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
   const [pendingFiles, setPendingFiles] = useState([])
   const [loading, setLoading] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
-  const [model, setModel] = useState('claude-sonnet-4-6')
+  const [model, setModel] = useState('claude-46-sonnet')
   const [modelOpen, setModelOpen] = useState(false)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
@@ -126,7 +161,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     setLoading(false); inputRef.current?.focus()
   }
 
-  const activeModel = MODELS.find(m=>m.id===model) || MODELS[1]
+  const activeModel = MODELS.find(m=>m.id===model) || MODELS[0]
 
   return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', height:'100vh', background:'var(--main-bg)', overflow:'hidden' }}>
@@ -151,19 +186,27 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
           </button>
           {modelOpen && (
             <div style={{ position:'absolute', right:0, top:'calc(100% + 6px)', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:6, minWidth:220, zIndex:100, boxShadow:'0 8px 30px rgba(0,0,0,0.4)' }}>
-              {MODELS.map(m => (
-                <button key={m.id} onClick={()=>{ setModel(m.id); setModelOpen(false) }}
-                  style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'9px 12px', borderRadius:8, border:'none', textAlign:'left', background:model===m.id?'var(--surface2)':'transparent', transition:'background .12s' }}
-                  onMouseEnter={e=>{ if(model!==m.id)e.currentTarget.style.background='rgba(255,255,255,0.04)' }}
-                  onMouseLeave={e=>{ if(model!==m.id)e.currentTarget.style.background='transparent' }}>
-                  <span style={{ width:8, height:8, borderRadius:'50%', background:m.color, flexShrink:0 }}/>
-                  <div>
-                    <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.label}</div>
-                    <div style={{ fontSize:11.5, color:'var(--text2)' }}>{m.desc}</div>
+              {(() => {
+                const groups = [...new Set(MODELS.map(m => m.group))]
+                return groups.map(group => (
+                  <div key={group}>
+                    <div style={{ padding:'6px 12px 2px', fontSize:10.5, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em' }}>{group}</div>
+                    {MODELS.filter(m => m.group === group).map(m => (
+                      <button key={m.id} onClick={()=>{ setModel(m.id); setModelOpen(false) }}
+                        style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'8px 12px', borderRadius:8, border:'none', textAlign:'left', background:model===m.id?'var(--surface2)':'transparent', transition:'background .12s' }}
+                        onMouseEnter={e=>{ if(model!==m.id)e.currentTarget.style.background='rgba(255,255,255,0.04)' }}
+                        onMouseLeave={e=>{ if(model!==m.id)e.currentTarget.style.background='transparent' }}>
+                        <span style={{ width:8, height:8, borderRadius:'50%', background:m.color, flexShrink:0 }}/>
+                        <div>
+                          <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.label}</div>
+                          <div style={{ fontSize:11.5, color:'var(--text2)' }}>{m.desc}</div>
+                        </div>
+                        {model===m.id && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" style={{ marginLeft:'auto' }}><polyline points="20 6 9 17 4 12"/></svg>}
+                      </button>
+                    ))}
                   </div>
-                  {model===m.id && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" style={{ marginLeft:'auto' }}><polyline points="20 6 9 17 4 12"/></svg>}
-                </button>
-              ))}
+                ))
+              })()}
             </div>
           )}
         </div>
