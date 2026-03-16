@@ -25,3 +25,9 @@ SAP_AI_API_URL
 RESOURCE_GROUP
 SAP_ORCHESTRATION_DEPLOYMENT_ID
 
+## Database
+Run the schema.sql in your Supabase SQL editor to set up the tables.
+
+## Deployment
+
+Frontend and API are both deployed on Vercel. Connect the GitHub repo to Vercel and add the env variables in the project settings before deploying.
