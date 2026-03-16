@@ -106,7 +106,12 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     if (!text && files.length === 0) return
 
     let convId = conversation?.id
-    if (!convId) { await onNewConversation(); return }
+    if (!convId) {
+      // Create conversation first, passing current model so it's saved correctly
+      const newConvo = await onNewConversation(model)
+      if (!newConvo) return
+      convId = newConvo.id
+    }
 
     setInput(''); setPendingFiles([]); setLoading(true)
 
