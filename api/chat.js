@@ -40,29 +40,21 @@ const MODELS = {
   'claude-45-sonnet':  { sap: 'anthropic--claude-4.5-sonnet',       display: 'Claude Sonnet 4.5',     version: '1'  },
   'claude-45-opus':    { sap: 'anthropic--claude-4.5-opus',         display: 'Claude Opus 4.5',       version: '1'  },
   // Claude 3.x
-  'claude-37-sonnet':  { sap: 'anthropic--claude-3.7-sonnet',       display: 'Claude Sonnet 3.7',     version: '1'  },
-  'claude-35-sonnet':  { sap: 'anthropic--claude-3.5-sonnet',       display: 'Claude Sonnet 3.5',     version: '1'  },
-  'claude-3-haiku':    { sap: 'anthropic--claude-3-haiku',          display: 'Claude Haiku 3',        version: '1'  },
+  'claude-37-sonnet':      { sap: 'anthropic--claude-3.7-sonnet',   display: 'Claude Sonnet 3.7',     version: '1'  },
   // OpenAI — GPT-5 and GPT-5 Mini don't support temperature
-  'gpt-5':             { sap: 'gpt-5',                              display: 'GPT-5',                 version: null, noTemp: true },
-  'gpt-5-mini':        { sap: 'gpt-5-mini',                        display: 'GPT-5 Mini',            version: null, noTemp: true },
-  'gpt-4o':            { sap: 'gpt-4o',                            display: 'GPT-4o',                version: null },
-  'gpt-4o-mini':       { sap: 'gpt-4o-mini',                       display: 'GPT-4o Mini',           version: null },
-  'gpt-41':            { sap: 'gpt-4.1',                           display: 'GPT-4.1',               version: null },
-  'gpt-41-mini':       { sap: 'gpt-4.1-mini',                      display: 'GPT-4.1 Mini',          version: null },
-  'gpt-41-nano':       { sap: 'gpt-4.1-nano',                      display: 'GPT-4.1 Nano',          version: null },
+  'gpt-5':                 { sap: 'gpt-5',                          display: 'GPT-5',                 version: null, noTemp: true },
+  'gpt-5-mini':            { sap: 'gpt-5-mini',                    display: 'GPT-5 Mini',            version: null, noTemp: true },
+  'gpt-4o':                { sap: 'gpt-4o',                        display: 'GPT-4o',                version: null },
+  'gpt-4o-mini':           { sap: 'gpt-4o-mini',                   display: 'GPT-4o Mini',           version: null },
+  'gpt-41':                { sap: 'gpt-4.1',                       display: 'GPT-4.1',               version: null },
+  'gpt-41-mini':           { sap: 'gpt-4.1-mini',                  display: 'GPT-4.1 Mini',          version: null },
+  'gpt-41-nano':           { sap: 'gpt-4.1-nano',                  display: 'GPT-4.1 Nano',          version: null },
   // Gemini
   'gemini-25-pro':         { sap: 'gemini-2.5-pro',                display: 'Gemini 2.5 Pro',        version: null },
   'gemini-25-flash':       { sap: 'gemini-2.5-flash',              display: 'Gemini 2.5 Flash',      version: null },
   'gemini-25-flash-lite':  { sap: 'gemini-2.5-flash-lite',         display: 'Gemini 2.5 Flash Lite', version: null },
   'gemini-20-flash':       { sap: 'gemini-2.0-flash',              display: 'Gemini 2.0 Flash',      version: null },
   'gemini-20-flash-lite':  { sap: 'gemini-2.0-flash-lite',         display: 'Gemini 2.0 Flash Lite', version: null },
-  // Mistral — Large and Medium don't support temperature
-  'mistral-large':     { sap: 'mistralai--mistral-large-instruct',  display: 'Mistral Large',         version: null, noTemp: true },
-  'mistral-medium':    { sap: 'mistralai--mistral-medium-instruct', display: 'Mistral Medium',        version: null, noTemp: true },
-  'mistral-small':     { sap: 'mistralai--mistral-small-instruct',  display: 'Mistral Small',         version: null },
-  // Meta — omit version entirely
-  'llama3-70b':        { sap: 'meta--llama3-70b-instruct',          display: 'Llama 3 70B',           version: null },
 }
 
 const DEFAULT_MODEL_ID = 'claude-46-sonnet'
