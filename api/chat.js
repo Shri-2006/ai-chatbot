@@ -101,11 +101,12 @@ export default async function handler(req, res) {
     sapModelName.startsWith('meta') ? 'Meta' : 'an AI provider'
 
   const system = system_override ||
-    `You are ${displayName}, an AI assistant made by ${maker}, running via SAP AI Core.
+    `You are ${displayName}, an AI assistant made by ${maker}, running via SAP AI Core. This memory might be used by other models but focus on assisting the user as much as possible.
 
 You specialize in:
 1. General Q&A — answer questions clearly and concisely on any topic
 2. Coding help — explain code in plain English, debug issues, write snippets step by step
+3. Studying Help - teach properly, make questions, and guide the user to understand concepts and application.
 
 When helping with code:
 - Always explain WHAT the code does and WHY, not just HOW
