@@ -13,7 +13,7 @@ const MODELS = [
   { id:'claude-45-haiku',       label:'Haiku 4.5',           desc:'Fast & cheap',             color:'#22c55e', group:'Claude 4.5'   },
   { id:'claude-45-sonnet',      label:'Sonnet 4.5',          desc:'Balanced',                 color:'#60a5fa', group:'Claude 4.5'   },
   { id:'claude-45-opus',        label:'Opus 4.5',            desc:'Most powerful',            color:'#c084fc', group:'Claude 4.5'   },
-  // Claude 3.x-Deprecated
+  // Claude 3.x-deprecated
   //{ id:'claude-37-sonnet',     label:'Sonnet 3.7',          desc:'Extended thinking',        color:'#f59e0b', group:'Claude 3' },
   // OpenAI
   { id:'gpt-5',                label:'GPT-5',               desc:'Latest OpenAI',            color:'#10b981', group:'OpenAI'   },
@@ -112,6 +112,11 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [model, setModel] = useState('claude-46-sonnet')
   const [modelOpen, setModelOpen] = useState(false)
+  const [memoryMode, setMemoryMode] = useState('summary')
+  const [memoryOpen, setMemoryOpen] = useState(false)
+  const [memoryMode, setMemoryMode] = useState('summary') // 'off' | 'summary' | 'full'
+  const [memoryMenuOpen, setMemoryMenuOpen] = useState(false)
+  const [conversationMemory, setConversationMemory] = useState('')
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -127,10 +132,15 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     supabase.from('messages').select('*').eq('conversation_id', conversation.id).order('created_at', { ascending:true })
       .then(({ data }) => { if (data) setMessages(data); setLoadingHistory(false) })
     setModel(conversation.model || 'claude-46-sonnet')
+    setMemoryMode(conversation.memory_mode || 'summary')
+    setConversationMemory(conversation.memory || '')
+    setMemoryMode(conversation.memory_mode || 'summary')
   }, [conversation?.id])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:'smooth' }) }, [messages])
   useEffect(() => { const close = () => setModelOpen(false); if (modelOpen) window.addEventListener('click', close); return () => window.removeEventListener('click', close) }, [modelOpen])
+  useEffect(() => { const close = () => setMemoryOpen(false); if (memoryOpen) window.addEventListener('click', close); return () => window.removeEventListener('click', close) }, [memoryOpen])
+  useEffect(() => { const close = () => setMemoryMenuOpen(false); if (memoryMenuOpen) window.addEventListener('click', close); return () => window.removeEventListener('click', close) }, [memoryMenuOpen])
 
   async function handleFileSelect(e) {
     const files = Array.from(e.target.files); e.target.value = ''
@@ -178,14 +188,29 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
       }).then(r=>r.json()).then(d => { if(d.reply) onUpdateConversation(convId,{title:d.reply.slice(0,60),model}) })
     }
 
-    // Build API message history
-    const apiMessages = messages.filter(m=>m.id!=='temp-user').map(m => ({
-      role: m.role, content: m.file_refs?.length > 0 ? `[Attached: ${m.file_refs.map(f=>f.name).join(', ')}]\n${m.content}` : m.content
-    }))
+    // Build API message history — only keep last 20 messages to avoid huge payloads
+    // Full history is still saved in Supabase, just not sent to the AI every time
+    const MAX_HISTORY = 20
+    const recentMessages = messages.filter(m=>m.id!=='temp-user').slice(-MAX_HISTORY)
+
+    const apiMessages = recentMessages.map(m => {
+      // For messages that had file attachments, just reference the filenames
+      // (the actual content was in the original message and is now in history)
+      if (m.file_refs?.length > 0 && m.role === 'user') {
+        return { role: m.role, content: `[Previously attached: ${m.file_refs.map(f=>f.name).join(', ')}]\n${m.content}` }
+      }
+      return { role: m.role, content: m.content }
+    })
     apiMessages.push({ role:'user', content: files.length>0 ? [...files.map(f=>f.contentBlock), ...(text?[{type:'text',text}]:[])] : text })
 
     try {
-      const res = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ messages:apiMessages, model }) })
+      const res = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+        messages: apiMessages,
+        model,
+        memory: conversationMemory,
+        memory_mode: memoryMode,
+        attached_file_names: files.map(f => f.name),
+      }) })
 
       // Safely parse response — SAP sometimes returns plain text errors instead of JSON
       const rawText = await res.text()
@@ -203,6 +228,12 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
       const reply = data.reply || data.error || 'Something went wrong.'
       const { data:saved } = await supabase.from('messages').insert({ conversation_id:convId, role:'assistant', content:reply, file_refs:[] }).select().single()
       setMessages(prev => [...prev, saved || { id:Date.now(), role:'assistant', content:reply, file_refs:[] }])
+
+      // Save updated memory to Supabase and local state
+      if (data.new_memory && memoryMode !== 'off') {
+        setConversationMemory(data.new_memory)
+        await supabase.from('conversations').update({ memory: data.new_memory, memory_mode: memoryMode }).eq('id', convId)
+      }
     } catch (err) {
       const msg = err?.message?.includes('Failed to fetch')
         ? '⚠️ Could not reach the server. Check your internet connection or try again.'
@@ -226,6 +257,64 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
         </button>
         <div style={{ flex:1, fontSize:14, fontWeight:500, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
           {conversation?.title || 'AI Assistant'}
+        </div>
+
+
+        {/* Memory mode toggle */}
+        <div style={{ position:'relative' }} onClick={e=>e.stopPropagation()}>
+          <button onClick={()=>setMemoryOpen(o=>!o)} style={{
+            display:'flex', alignItems:'center', gap:6,
+            background:'var(--surface)', border:'1px solid var(--border)',
+            borderRadius:9, padding:'6px 10px', color:'var(--text)', fontSize:12, fontWeight:500,
+            transition:'border-color .15s',
+          }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor='var(--accent)'}
+            onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+            <span style={{ fontSize:13 }}>
+              {memoryMode === 'off' ? '🧠' : memoryMode === 'summary' ? '📝' : '💡'}
+            </span>
+            <span style={{ color:'var(--text2)', fontSize:11.5 }}>
+              {memoryMode === 'off' ? 'No Memory' : memoryMode === 'summary' ? 'Summary' : 'Full Memory'}
+            </span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color:'var(--text2)' }}><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          {memoryOpen && (
+            <div style={{
+              position:'fixed', right:8, top:'auto',
+              background:'var(--surface)', border:'1px solid var(--border)',
+              borderRadius:12, padding:6, minWidth:220, zIndex:1000,
+              boxShadow:'0 8px 30px rgba(0,0,0,0.4)',
+            }}>
+              {[
+                { id:'off',     icon:'🧠', label:'No Memory',   desc:'Send last 20 messages each time' },
+                { id:'summary', icon:'📝', label:'Summary',     desc:'Rolling summary (default, fast)' },
+                { id:'full',    icon:'💡', label:'Full Memory',  desc:'Detailed memory of everything' },
+              ].map(m => (
+                <button key={m.id} onClick={async () => {
+                  setMemoryMode(m.id)
+                  setMemoryOpen(false)
+                  // Save preference to conversation
+                  if (conversation?.id) {
+                    await supabase.from('conversations').update({ memory_mode: m.id }).eq('id', conversation.id)
+                  }
+                }} style={{
+                  width:'100%', display:'flex', alignItems:'center', gap:10,
+                  padding:'9px 12px', borderRadius:8, border:'none', textAlign:'left',
+                  background: memoryMode===m.id ? 'var(--surface2)' : 'transparent',
+                  transition:'background .12s',
+                }}
+                  onMouseEnter={e=>{ if(memoryMode!==m.id) e.currentTarget.style.background='rgba(255,255,255,0.04)' }}
+                  onMouseLeave={e=>{ if(memoryMode!==m.id) e.currentTarget.style.background='transparent' }}>
+                  <span style={{ fontSize:16 }}>{m.icon}</span>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.label}</div>
+                    <div style={{ fontSize:11.5, color:'var(--text2)' }}>{m.desc}</div>
+                  </div>
+                  {memoryMode===m.id && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" style={{ marginLeft:'auto' }}><polyline points="20 6 9 17 4 12"/></svg>}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Model selector */}
@@ -259,6 +348,54 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
                   </div>
                 ))
               })()}
+            </div>
+          )}
+        </div>
+
+        {/* Memory mode toggle */}
+        <div style={{ position:'relative' }} onClick={e=>e.stopPropagation()}>
+          <button onClick={()=>setMemoryMenuOpen(o=>!o)} style={{
+            display:'flex', alignItems:'center', gap:6,
+            background:'var(--surface)', border:'1px solid var(--border)',
+            borderRadius:9, padding:'6px 10px', fontSize:12, fontWeight:500,
+            color: memoryMode === 'off' ? 'var(--text2)' : memoryMode === 'full' ? '#a855f7' : '#22c55e',
+            transition:'border-color .15s',
+          }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor='var(--accent)'}
+            onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
+            {memoryMode === 'off' ? '🧠 Off' : memoryMode === 'summary' ? '🧠 Summary' : '🧠 Full'}
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color:'var(--text2)' }}><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+
+          {memoryMenuOpen && (
+            <div style={{ position:'fixed', right:8, top:'auto', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:6, minWidth:220, zIndex:1000, boxShadow:'0 8px 30px rgba(0,0,0,0.4)' }}>
+              <div style={{ padding:'6px 12px 4px', fontSize:10.5, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em' }}>Memory Mode</div>
+              {[
+                { id:'off',     label:'Off',          desc:'No memory — send last 20 messages',      color:'var(--text2)' },
+                { id:'summary', label:'Summary',       desc:'Brief rolling summary (default, fast)',  color:'#22c55e'     },
+                { id:'full',    label:'Full Memory',   desc:'Detailed record of everything discussed', color:'#a855f7'     },
+              ].map(m => (
+                <button key={m.id} onClick={async () => {
+                  setMemoryMode(m.id)
+                  setMemoryMenuOpen(false)
+                  if (conversation?.id) {
+                    await supabase.from('conversations').update({ memory_mode: m.id }).eq('id', conversation.id)
+                  }
+                }} style={{
+                  width:'100%', display:'flex', alignItems:'center', gap:10,
+                  padding:'9px 12px', borderRadius:8, border:'none', textAlign:'left',
+                  background: memoryMode===m.id ? 'var(--surface2)' : 'transparent', transition:'background .12s',
+                }}
+                  onMouseEnter={e=>{ if(memoryMode!==m.id) e.currentTarget.style.background='rgba(255,255,255,0.04)' }}
+                  onMouseLeave={e=>{ if(memoryMode!==m.id) e.currentTarget.style.background='transparent' }}>
+                  <span style={{ width:8, height:8, borderRadius:'50%', background:m.color, flexShrink:0 }}/>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.label}</div>
+                    <div style={{ fontSize:11.5, color:'var(--text2)' }}>{m.desc}</div>
+                  </div>
+                  {memoryMode===m.id && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" style={{ marginLeft:'auto' }}><polyline points="20 6 9 17 4 12"/></svg>}
+                </button>
+              ))}
             </div>
           )}
         </div>
