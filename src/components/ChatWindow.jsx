@@ -81,10 +81,16 @@ async function processFile(file) {
   if (file.type === 'application/pdf') {
     // Extract text from PDF — SAP orchestration doesn't support raw PDF binary
     const text = await extractPdfText(file)
-    if (!text.trim()) throw new Error('Could not extract text from PDF. It may be a scanned image.')
+    if (!text.trim()) throw new Error('Could not extract text from PDF. It may be a scanned image-based PDF.')
+    // Truncate to 8000 chars per file to avoid SAP payload limits
+    // 5 files × 8000 chars = 40000 chars which SAP can handle
+    const MAX_CHARS = 8000
+    const truncated = text.trim().slice(0, MAX_CHARS)
+    const wasTruncated = text.trim().length > MAX_CHARS
+    const note = wasTruncated ? `\n\n[Note: Content truncated to ${MAX_CHARS} characters due to size limits]` : ''
     return {
       name: file.name, icon, fileType: 'pdf',
-      contentBlock: { type: 'text', text: `[Contents of ${file.name}]:\n${text.trim()}` }
+      contentBlock: { type: 'text', text: `[Contents of ${file.name}]:\n${truncated}${note}` }
     }
   }
   if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
