@@ -27,11 +27,12 @@ export default function MainApp({ session }) {
     if (data) setConversations(data)
   }
 
-  async function newConversation() {
+  async function newConversation(modelOverride) {
     const { data } = await supabase.from('conversations')
-      .insert({ user_id: session.user.id, title: 'New Chat', model: profile?.default_model || 'claude-sonnet-4-6' })
+      .insert({ user_id: session.user.id, title: 'New Chat', model: modelOverride || profile?.default_model || 'claude-sonnet-4-6' })
       .select().single()
     if (data) { setConversations(prev => [data, ...prev]); setActiveId(data.id) }
+    return data // return so ChatWindow can use the id immediately
   }
 
   async function deleteConversation(id) {
@@ -53,6 +54,7 @@ export default function MainApp({ session }) {
         activeId={activeId}
         profile={profile}
         onSelect={id => { setActiveId(id); setSidebarOpen(false) }}
+        session={session}
         onNew={newConversation}
         onDelete={deleteConversation}
         onSignOut={() => supabase.auth.signOut()}
