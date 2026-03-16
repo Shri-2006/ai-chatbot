@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, memo } from 'react'
 import { supabase } from '../lib/supabase'
 import MessageBubble from './MessageBubble'
 
@@ -94,10 +94,80 @@ async function processFile(file) {
   throw new Error('Unsupported file type')
 }
 
-export default function ChatWindow({ conversation, session, profile, sidebarOpen, onToggleSidebar, onUpdateConversation, onNewConversation, onSetActiveId }) {
-  const [messages, setMessages] = useState([])
+
+// Separate memoized component so typing doesn't re-render the message list
+const InputBar = memo(function InputBar({ onSend, disabled }) {
   const [input, setInput] = useState('')
   const [pendingFiles, setPendingFiles] = useState([])
+  const inputRef = useRef(null)
+  const fileInputRef = useRef(null)
+
+  async function handleFileSelect(e) {
+    const files = Array.from(e.target.files); e.target.value = ''
+    if (pendingFiles.filter(Boolean).length + files.length > 5) {
+      alert('Maximum 5 files at a time.')
+      return
+    }
+    for (const file of files) {
+      if (file.size > 20*1024*1024) { alert(`${file.name} is too large (max 20MB)`); continue }
+      try { setPendingFiles(prev => [...prev, null]); const p = await processFile(file); setPendingFiles(prev => [...prev.slice(0,-1), p]) }
+      catch(err) { setPendingFiles(prev => prev.slice(0,-1)); alert(`Could not read ${file.name}: ${err.message}`) }
+    }
+  }
+
+  function handleSend() {
+    const text = input.trim()
+    const files = [...pendingFiles].filter(Boolean)
+    if (!text && files.length === 0) return
+    onSend(text, files)
+    setInput('')
+    setPendingFiles([])
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+  }
+
+  return (
+    <div style={{ padding:'10px 16px 20px', flexShrink:0 }}>
+      {pendingFiles.filter(Boolean).length > 0 && (
+        <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8, maxWidth:780, margin:'0 auto 8px' }}>
+          {pendingFiles.filter(Boolean).map((f,i)=>(
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:6, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:8, padding:'4px 8px 4px 10px', fontSize:12.5, color:'var(--text)' }}>
+              <span>{f.icon}</span>
+              <span style={{ maxWidth:130, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{f.name}</span>
+              <button onClick={()=>setPendingFiles(prev=>prev.filter((_,j)=>j!==i))} style={{ background:'none', border:'none', color:'var(--text3)', fontSize:14, lineHeight:1, padding:'0 2px', transition:'color .12s' }} onMouseEnter={e=>e.currentTarget.style.color='#fca5a5'} onMouseLeave={e=>e.currentTarget.style.color='var(--text3)'}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ maxWidth:780, margin:'0 auto', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16, padding:'10px 10px 10px 14px', display:'flex', alignItems:'flex-end', gap:8, transition:'border-color .2s, box-shadow .2s' }}
+        onFocusCapture={e=>{e.currentTarget.style.borderColor='var(--accent)';e.currentTarget.style.boxShadow='0 0 0 3px var(--accent-glow)'}}
+        onBlurCapture={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.boxShadow='none'}}>
+        <button onClick={()=>fileInputRef.current?.click()} title="Attach file"
+          style={{ width:32, height:32, borderRadius:8, background:'none', border:'1px solid var(--border)', color:'var(--text2)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginBottom:2, transition:'all .15s' }}
+          onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--accent)';e.currentTarget.style.color='var(--accent)'}}
+          onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--text2)'}}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.png,.pdf,.docx,.txt" style={{ display:'none' }} onChange={handleFileSelect}/>
+        <textarea ref={inputRef} value={input}
+          onChange={e=>{setInput(e.target.value);e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,160)+'px'}}
+          onKeyDown={handleKeyDown}
+          placeholder="Message AI Assistant…  (Shift+Enter for new line)" rows={1}
+          style={{ flex:1, background:'none', border:'none', outline:'none', color:'var(--text)', fontSize:14, resize:'none', maxHeight:160, lineHeight:1.5, fontFamily:'var(--font)' }}/>
+        <button onClick={handleSend} disabled={disabled}
+          style={{ width:34, height:34, borderRadius:10, flexShrink:0, background:disabled?'var(--border)':'linear-gradient(135deg,var(--accent),var(--accent2))', border:'none', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', transition:'all .15s' }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+      </div>
+      <div style={{ textAlign:'center', fontSize:11.5, color:'var(--text3)', marginTop:8 }}>Supports JPG, PNG, PDF, DOCX, TXT · AI can make mistakes</div>
+    </div>
+  )
+})
+
+export default function ChatWindow({ conversation, session, profile, sidebarOpen, onToggleSidebar, onUpdateConversation, onNewConversation, onSetActiveId }) {
+  const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [model, setModel] = useState('claude-46-sonnet')
@@ -105,12 +175,8 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
   const [memoryMode, setMemoryMode] = useState('summary')
   const [memoryOpen, setMemoryOpen] = useState(false)
   const bottomRef = useRef(null)
-  const inputRef = useRef(null)
-  const fileInputRef = useRef(null)
 
   useEffect(() => {
-    setInput('')
-    setPendingFiles([])
     setLoading(false)
     if (!conversation) { setMessages([]); return }
     setLoadingHistory(true)
@@ -124,22 +190,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
   useEffect(() => { const close = () => setModelOpen(false); if (modelOpen) window.addEventListener('click', close); return () => window.removeEventListener('click', close) }, [modelOpen])
   useEffect(() => { const close = () => setMemoryOpen(false); if (memoryOpen) window.addEventListener('click', close); return () => window.removeEventListener('click', close) }, [memoryOpen])
 
-  async function handleFileSelect(e) {
-    const files = Array.from(e.target.files); e.target.value = ''
-    if (pendingFiles.filter(Boolean).length + files.length > 5) {
-      alert('Maximum 5 files at a time. This keeps the request small enough for the AI to process reliably.')
-      return
-    }
-    for (const file of files) {
-      if (file.size > 20*1024*1024) { alert(`${file.name} is too large (max 20MB per file)`); continue }
-      try { setPendingFiles(prev => [...prev, null]); const p = await processFile(file); setPendingFiles(prev => [...prev.slice(0,-1), p]) }
-      catch(err) { setPendingFiles(prev => prev.slice(0,-1)); alert(`Could not read ${file.name}: ${err.message}`) }
-    }
-  }
-
-  async function sendMessage() {
-    const text = input.trim()
-    const files = [...pendingFiles].filter(Boolean)
+  const sendMessage = useCallback(async function sendMessage(text, files) {
     if (!text && files.length === 0) return
 
     let convId = conversation?.id
@@ -226,8 +277,8 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
       setMessages(prev => [...prev, { id:Date.now(), role:'assistant', content:msg, file_refs:[] }])
     }
 
-    setLoading(false); inputRef.current?.focus()
-  }
+    setLoading(false)
+  }, [conversation, model, memoryMode, messages, onNewConversation, onSetActiveId, onUpdateConversation])
 
   const activeModel = MODELS.find(m=>m.id===model) || MODELS[0]
 
@@ -365,41 +416,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
         <div ref={bottomRef}/>
       </div>
 
-      {/* Input */}
-      <div style={{ padding:'10px 16px 20px', flexShrink:0 }}>
-        {pendingFiles.filter(Boolean).length > 0 && (
-          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8, maxWidth:780, margin:'0 auto 8px' }}>
-            {pendingFiles.filter(Boolean).map((f,i)=>(
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:6, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:8, padding:'4px 8px 4px 10px', fontSize:12.5, color:'var(--text)' }}>
-                <span>{f.icon}</span>
-                <span style={{ maxWidth:130, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{f.name}</span>
-                <button onClick={()=>setPendingFiles(prev=>prev.filter((_,j)=>j!==i))} style={{ background:'none', border:'none', color:'var(--text3)', fontSize:14, lineHeight:1, padding:'0 2px', transition:'color .12s' }} onMouseEnter={e=>e.currentTarget.style.color='#fca5a5'} onMouseLeave={e=>e.currentTarget.style.color='var(--text3)'}>✕</button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div style={{ maxWidth:780, margin:'0 auto', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16, padding:'10px 10px 10px 14px', display:'flex', alignItems:'flex-end', gap:8, transition:'border-color .2s, box-shadow .2s' }}
-          onFocusCapture={e=>{e.currentTarget.style.borderColor='var(--accent)';e.currentTarget.style.boxShadow='0 0 0 3px var(--accent-glow)'}}
-          onBlurCapture={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.boxShadow='none'}}>
-          <button onClick={()=>fileInputRef.current?.click()} title="Attach file"
-            style={{ width:32, height:32, borderRadius:8, background:'none', border:'1px solid var(--border)', color:'var(--text2)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, marginBottom:2, transition:'all .15s' }}
-            onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--accent)';e.currentTarget.style.color='var(--accent)'}}
-            onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--text2)'}}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-          </button>
-          <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.png,.pdf,.docx,.txt" style={{ display:'none' }} onChange={handleFileSelect}/>
-          <textarea ref={inputRef} value={input}
-            onChange={e=>{setInput(e.target.value);e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,160)+'px'}}
-            onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage()}}}
-            placeholder="Message AI Assistant…  (Shift+Enter for new line)" rows={1}
-            style={{ flex:1, background:'none', border:'none', outline:'none', color:'var(--text)', fontSize:14, resize:'none', maxHeight:160, lineHeight:1.5, fontFamily:'var(--font)' }}/>
-          <button onClick={sendMessage} disabled={loading||(!input.trim()&&pendingFiles.filter(Boolean).length===0)}
-            style={{ width:34, height:34, borderRadius:10, flexShrink:0, background:loading||(!input.trim()&&pendingFiles.filter(Boolean).length===0)?'var(--border)':'linear-gradient(135deg,var(--accent),var(--accent2))', border:'none', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', transition:'all .15s' }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-          </button>
-        </div>
-        <div style={{ textAlign:'center', fontSize:11.5, color:'var(--text3)', marginTop:8 }}>Supports JPG, PNG, PDF, DOCX, TXT · AI can make mistakes</div>
-      </div>
+      <InputBar onSend={sendMessage} disabled={loading} />
     </div>
   )
 }
