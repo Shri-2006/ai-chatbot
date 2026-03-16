@@ -28,11 +28,11 @@ async function getSapToken() {
   return tokenCache.token
 }
 
-// SAP model name mapping
+// Correct SAP model names — dots not dashes between version numbers
 const MODEL_MAP = {
-  'claude-haiku-4-5-20251001': 'anthropic--claude-4-5-haiku',
-  'claude-sonnet-4-6':         'anthropic--claude-4-6-sonnet',
-  'claude-opus-4-6':           'anthropic--claude-4-6-opus',
+  'claude-haiku-4-5-20251001': 'anthropic--claude-4.5-haiku',
+  'claude-sonnet-4-6':         'anthropic--claude-4.6-sonnet',
+  'claude-opus-4-6':           'anthropic--claude-4.6-opus',
 }
 
 const DEFAULT_SYSTEM = `You are a helpful AI assistant integrated with SAP AI Core.
@@ -66,7 +66,7 @@ export default async function handler(req, res) {
   if (!messages?.length) return res.status(400).json({ error: 'No messages provided' })
 
   const system        = system_override || DEFAULT_SYSTEM
-  const sapModelName  = MODEL_MAP[model] || 'anthropic--claude-4-6-sonnet'
+  const sapModelName  = MODEL_MAP[model] || 'anthropic--claude-4.6-sonnet'
   const apiUrl        = process.env.SAP_AI_API_URL
   const resourceGroup = process.env.RESOURCE_GROUP || 'default'
   const deploymentId  = process.env.SAP_ORCHESTRATION_DEPLOYMENT_ID
@@ -78,37 +78,45 @@ export default async function handler(req, res) {
   try {
     const token = await getSapToken()
 
-    // Try all known URL patterns for SAP orchestration
-    const urlsToTry = [
-      `${apiUrl}/v2/inference/deployments/${deploymentId}/completion`,
-      `${apiUrl}/v2/inference/deployments/${deploymentId}/chat/completions`,
-      `${apiUrl}/v2/inference/deployments/${deploymentId}/invoke`,
-    ]
+    // Build conversation history — all messages except the last user message
+    const history = messages.slice(0, -1).map(m => ({
+      role:    m.role,
+      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+    }))
 
-    // Orchestration service payload format
+    // Last user message goes into input_params
+    const lastMessage = messages[messages.length - 1]
+    const userInput   = typeof lastMessage.content === 'string'
+      ? lastMessage.content
+      : JSON.stringify(lastMessage.content)
+
+    // SAP Orchestration payload — uses template + input_params pattern
     const payload = {
       orchestration_config: {
         module_configurations: {
+          templating_module_config: {
+            template: [
+              { role: 'system', content: system },
+              { role: 'user',   content: '{{?user_input}}' }
+            ]
+          },
           llm_module_config: {
             model_name:    sapModelName,
-            model_version: "latest",
+            model_version: "1",
             model_params: {
-              max_tokens: 4096,
+              max_tokens:  4096,
+              temperature: 0.7,
             }
           }
         }
       },
-      input_params: {},
-      messages_history: messages,
-      template: {
-        role:    "system",
-        content: system,
-      }
+      input_params:     { user_input: userInput },
+      messages_history: history,
     }
 
-    let lastError = null
-    for (const url of urlsToTry) {
-      const aiResp = await fetch(url, {
+    const aiResp = await fetch(
+      `${apiUrl}/v2/inference/deployments/${deploymentId}/completion`,
+      {
         method:  'POST',
         headers: {
           Authorization:       `Bearer ${token}`,
@@ -116,28 +124,21 @@ export default async function handler(req, res) {
           'Content-Type':      'application/json',
         },
         body: JSON.stringify(payload),
-      })
-
-      if (aiResp.status === 404) { lastError = `404 at ${url}`; continue }
-
-      if (!aiResp.ok) {
-        const text = await aiResp.text()
-        return res.status(502).json({ error: `SAP error ${aiResp.status}: ${text.slice(0, 300)}` })
       }
+    )
 
-      const result = await aiResp.json()
-      // Handle both orchestration and standard response formats
-      const reply =
-        result.orchestration_result?.choices?.[0]?.message?.content ||
-        result.choices?.[0]?.message?.content ||
-        result.completion ||
-        result.output ||
-        JSON.stringify(result).slice(0, 500)
-
-      return res.status(200).json({ reply, model_used: sapModelName })
+    if (!aiResp.ok) {
+      const text = await aiResp.text()
+      return res.status(502).json({ error: `SAP error ${aiResp.status}: ${text.slice(0, 400)}` })
     }
 
-    return res.status(404).json({ error: `Could not find working endpoint. Last error: ${lastError}` })
+    const result = await aiResp.json()
+    const reply  =
+      result.orchestration_result?.choices?.[0]?.message?.content ||
+      result.module_results?.llm?.choices?.[0]?.message?.content  ||
+      'No response received.'
+
+    return res.status(200).json({ reply, model_used: sapModelName })
 
   } catch (err) {
     console.error('Chat error:', err)
