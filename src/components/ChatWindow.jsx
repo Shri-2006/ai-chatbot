@@ -201,7 +201,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
       onSetActiveId(convId)
     }
 
-    setInput(''); setPendingFiles([]); setLoading(true)
+    setLoading(true)
 
     const displayContent = text || `[${files.map(f=>f.name).join(', ')}]`
     const fileRefs = files.map(f => ({ name:f.name, type:f.fileType, icon:f.icon }))
