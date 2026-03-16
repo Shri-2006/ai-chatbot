@@ -39,8 +39,8 @@ const MODELS = {
   'claude-45-haiku':   { sap: 'anthropic--claude-4.5-haiku',        display: 'Claude Haiku 4.5',      version: '1'  },
   'claude-45-sonnet':  { sap: 'anthropic--claude-4.5-sonnet',       display: 'Claude Sonnet 4.5',     version: '1'  },
   'claude-45-opus':    { sap: 'anthropic--claude-4.5-opus',         display: 'Claude Opus 4.5',       version: '1'  },
-  // Claude 3.x
-  'claude-37-sonnet':      { sap: 'anthropic--claude-3.7-sonnet',   display: 'Claude Sonnet 3.7',     version: '1'  },
+  // Claude 3.x-now deprecated
+ // 'claude-37-sonnet':      { sap: 'anthropic--claude-3.7-sonnet',   display: 'Claude Sonnet 3.7',     version: '1'  },
   // OpenAI — GPT-5 and GPT-5 Mini don't support temperature
   'gpt-5':                 { sap: 'gpt-5',                          display: 'GPT-5',                 version: null, noTemp: true },
   'gpt-5-mini':            { sap: 'gpt-5-mini',                    display: 'GPT-5 Mini',            version: null, noTemp: true },
