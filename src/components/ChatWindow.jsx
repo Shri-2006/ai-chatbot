@@ -14,29 +14,21 @@ const MODELS = [
   { id:'claude-45-sonnet',      label:'Sonnet 4.5',          desc:'Balanced',                 color:'#60a5fa', group:'Claude 4.5'   },
   { id:'claude-45-opus',        label:'Opus 4.5',            desc:'Most powerful',            color:'#c084fc', group:'Claude 4.5'   },
   // Claude 3.x
-  { id:'claude-37-sonnet',      label:'Sonnet 3.7',          desc:'Extended thinking',        color:'#f59e0b', group:'Claude 3'     },
-  { id:'claude-35-sonnet',      label:'Sonnet 3.5',          desc:'Classic favourite',        color:'#fb923c', group:'Claude 3'     },
-  { id:'claude-3-haiku',        label:'Haiku 3',             desc:'Fastest & cheapest',       color:'#34d399', group:'Claude 3'     },
+  { id:'claude-37-sonnet',     label:'Sonnet 3.7',          desc:'Extended thinking',        color:'#f59e0b', group:'Claude 3' },
   // OpenAI
-  { id:'gpt-5',                label:'GPT-5',               desc:'Latest OpenAI',            color:'#10b981', group:'OpenAI'  },
-  { id:'gpt-5-mini',           label:'GPT-5 Mini',          desc:'Fast GPT-5',               color:'#34d399', group:'OpenAI'  },
-  { id:'gpt-4o',               label:'GPT-4o',              desc:'Multimodal',               color:'#6ee7b7', group:'OpenAI'  },
-  { id:'gpt-4o-mini',          label:'GPT-4o Mini',         desc:'Fast & affordable',        color:'#a7f3d0', group:'OpenAI'  },
-  { id:'gpt-41',               label:'GPT-4.1',             desc:'Latest GPT-4',             color:'#059669', group:'OpenAI'  },
-  { id:'gpt-41-mini',          label:'GPT-4.1 Mini',        desc:'Efficient',                color:'#047857', group:'OpenAI'  },
-  { id:'gpt-41-nano',          label:'GPT-4.1 Nano',        desc:'Cheapest OpenAI',          color:'#065f46', group:'OpenAI'  },
+  { id:'gpt-5',                label:'GPT-5',               desc:'Latest OpenAI',            color:'#10b981', group:'OpenAI'   },
+  { id:'gpt-5-mini',           label:'GPT-5 Mini',          desc:'Fast GPT-5',               color:'#34d399', group:'OpenAI'   },
+  { id:'gpt-4o',               label:'GPT-4o',              desc:'Multimodal',               color:'#6ee7b7', group:'OpenAI'   },
+  { id:'gpt-4o-mini',          label:'GPT-4o Mini',         desc:'Fast & affordable',        color:'#a7f3d0', group:'OpenAI'   },
+  { id:'gpt-41',               label:'GPT-4.1',             desc:'Latest GPT-4',             color:'#059669', group:'OpenAI'   },
+  { id:'gpt-41-mini',          label:'GPT-4.1 Mini',        desc:'Efficient',                color:'#047857', group:'OpenAI'   },
+  { id:'gpt-41-nano',          label:'GPT-4.1 Nano',        desc:'Cheapest OpenAI',          color:'#065f46', group:'OpenAI'   },
   // Gemini
-  { id:'gemini-25-pro',        label:'Gemini 2.5 Pro',      desc:'Best Gemini',              color:'#f43f5e', group:'Google'  },
-  { id:'gemini-25-flash',      label:'Gemini 2.5 Flash',    desc:'Fast & smart',             color:'#fb7185', group:'Google'  },
-  { id:'gemini-25-flash-lite', label:'2.5 Flash Lite',      desc:'Cheapest Gemini',          color:'#fda4af', group:'Google'  },
-  { id:'gemini-20-flash',      label:'Gemini 2.0 Flash',    desc:'Reliable',                 color:'#fecdd3', group:'Google'  },
-  { id:'gemini-20-flash-lite', label:'2.0 Flash Lite',      desc:'Budget option',            color:'#ffe4e6', group:'Google'  },
-  // Mistral
-  { id:'mistral-large',        label:'Mistral Large',       desc:'Most capable',             color:'#f97316', group:'Mistral' },
-  { id:'mistral-medium',       label:'Mistral Medium',      desc:'Balanced',                 color:'#fb923c', group:'Mistral' },
-  { id:'mistral-small',        label:'Mistral Small',       desc:'Fast & cheap',             color:'#fdba74', group:'Mistral' },
-  // Meta
-  { id:'llama3-70b',           label:'Llama 3 70B',         desc:'Open source',              color:'#8b5cf6', group:'Meta'    },
+  { id:'gemini-25-pro',        label:'Gemini 2.5 Pro',      desc:'Best Gemini',              color:'#f43f5e', group:'Google'   },
+  { id:'gemini-25-flash',      label:'Gemini 2.5 Flash',    desc:'Fast & smart',             color:'#fb7185', group:'Google'   },
+  { id:'gemini-25-flash-lite', label:'2.5 Flash Lite',      desc:'Cheapest Gemini',          color:'#fda4af', group:'Google'   },
+  { id:'gemini-20-flash',      label:'Gemini 2.0 Flash',    desc:'Reliable',                 color:'#fecdd3', group:'Google'   },
+  { id:'gemini-20-flash-lite', label:'2.0 Flash Lite',      desc:'Budget option',            color:'#ffe4e6', group:'Google'   },
 ]
 
 const FILE_ICONS = {
