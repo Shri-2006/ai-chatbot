@@ -17,33 +17,26 @@ const MODELS = [
   { id:'claude-37-sonnet',      label:'Sonnet 3.7',          desc:'Extended thinking',        color:'#f59e0b', group:'Claude 3'     },
   { id:'claude-35-sonnet',      label:'Sonnet 3.5',          desc:'Classic favourite',        color:'#fb923c', group:'Claude 3'     },
   { id:'claude-3-haiku',        label:'Haiku 3',             desc:'Fastest & cheapest',       color:'#34d399', group:'Claude 3'     },
-  // GPT
-  { id:'gpt-5',                 label:'GPT-5',               desc:'Latest OpenAI',            color:'#10b981', group:'OpenAI'       },
-  { id:'gpt-5-mini',            label:'GPT-5 Mini',          desc:'Fast GPT-5',               color:'#34d399', group:'OpenAI'       },
-  { id:'gpt-4o',                label:'GPT-4o',              desc:'Multimodal',               color:'#6ee7b7', group:'OpenAI'       },
-  { id:'gpt-4o-mini',           label:'GPT-4o Mini',         desc:'Fast & affordable',        color:'#a7f3d0', group:'OpenAI'       },
-  { id:'gpt-41',                label:'GPT-4.1',             desc:'Latest GPT-4',             color:'#059669', group:'OpenAI'       },
-  { id:'gpt-41-mini',           label:'GPT-4.1 Mini',        desc:'Efficient',                color:'#047857', group:'OpenAI'       },
-  { id:'gpt-41-nano',           label:'GPT-4.1 Nano',        desc:'Cheapest OpenAI',          color:'#065f46', group:'OpenAI'       },
-  { id:'o3',                    label:'o3',                  desc:'Advanced reasoning',       color:'#0ea5e9', group:'OpenAI'       },
-  { id:'o3-mini',               label:'o3 Mini',             desc:'Efficient reasoning',      color:'#38bdf8', group:'OpenAI'       },
-  { id:'o4-mini',               label:'o4 Mini',             desc:'Latest reasoning',         color:'#7dd3fc', group:'OpenAI'       },
+  // OpenAI
+  { id:'gpt-5',                label:'GPT-5',               desc:'Latest OpenAI',            color:'#10b981', group:'OpenAI'  },
+  { id:'gpt-5-mini',           label:'GPT-5 Mini',          desc:'Fast GPT-5',               color:'#34d399', group:'OpenAI'  },
+  { id:'gpt-4o',               label:'GPT-4o',              desc:'Multimodal',               color:'#6ee7b7', group:'OpenAI'  },
+  { id:'gpt-4o-mini',          label:'GPT-4o Mini',         desc:'Fast & affordable',        color:'#a7f3d0', group:'OpenAI'  },
+  { id:'gpt-41',               label:'GPT-4.1',             desc:'Latest GPT-4',             color:'#059669', group:'OpenAI'  },
+  { id:'gpt-41-mini',          label:'GPT-4.1 Mini',        desc:'Efficient',                color:'#047857', group:'OpenAI'  },
+  { id:'gpt-41-nano',          label:'GPT-4.1 Nano',        desc:'Cheapest OpenAI',          color:'#065f46', group:'OpenAI'  },
   // Gemini
-  { id:'gemini-25-pro',         label:'Gemini 2.5 Pro',      desc:'Best Gemini',              color:'#f43f5e', group:'Google'       },
-  { id:'gemini-25-flash',       label:'Gemini 2.5 Flash',    desc:'Fast & smart',             color:'#fb7185', group:'Google'       },
-  { id:'gemini-25-flash-lite',  label:'2.5 Flash Lite',      desc:'Cheapest Gemini',          color:'#fda4af', group:'Google'       },
-  { id:'gemini-20-flash',       label:'Gemini 2.0 Flash',    desc:'Reliable',                 color:'#fecdd3', group:'Google'       },
-  { id:'gemini-20-flash-lite',  label:'2.0 Flash Lite',      desc:'Budget option',            color:'#ffe4e6', group:'Google'       },
+  { id:'gemini-25-pro',        label:'Gemini 2.5 Pro',      desc:'Best Gemini',              color:'#f43f5e', group:'Google'  },
+  { id:'gemini-25-flash',      label:'Gemini 2.5 Flash',    desc:'Fast & smart',             color:'#fb7185', group:'Google'  },
+  { id:'gemini-25-flash-lite', label:'2.5 Flash Lite',      desc:'Cheapest Gemini',          color:'#fda4af', group:'Google'  },
+  { id:'gemini-20-flash',      label:'Gemini 2.0 Flash',    desc:'Reliable',                 color:'#fecdd3', group:'Google'  },
+  { id:'gemini-20-flash-lite', label:'2.0 Flash Lite',      desc:'Budget option',            color:'#ffe4e6', group:'Google'  },
   // Mistral
-  { id:'mistral-large',         label:'Mistral Large',       desc:'Most capable',             color:'#f97316', group:'Mistral'      },
-  { id:'mistral-medium',        label:'Mistral Medium',      desc:'Balanced',                 color:'#fb923c', group:'Mistral'      },
-  { id:'mistral-small',         label:'Mistral Small',       desc:'Fast & cheap',             color:'#fdba74', group:'Mistral'      },
-  // Amazon Nova
-  { id:'nova-pro',              label:'Nova Pro',            desc:'Most capable Nova',        color:'#f59e0b', group:'Amazon Nova'  },
-  { id:'nova-lite',             label:'Nova Lite',           desc:'Balanced',                 color:'#fbbf24', group:'Amazon Nova'  },
-  { id:'nova-micro',            label:'Nova Micro',          desc:'Fastest & cheapest',       color:'#fcd34d', group:'Amazon Nova'  },
+  { id:'mistral-large',        label:'Mistral Large',       desc:'Most capable',             color:'#f97316', group:'Mistral' },
+  { id:'mistral-medium',       label:'Mistral Medium',      desc:'Balanced',                 color:'#fb923c', group:'Mistral' },
+  { id:'mistral-small',        label:'Mistral Small',       desc:'Fast & cheap',             color:'#fdba74', group:'Mistral' },
   // Meta
-  { id:'llama3-70b',            label:'Llama 3 70B',         desc:'Open source',              color:'#8b5cf6', group:'Meta'         },
+  { id:'llama3-70b',           label:'Llama 3 70B',         desc:'Open source',              color:'#8b5cf6', group:'Meta'    },
 ]
 
 const FILE_ICONS = {
