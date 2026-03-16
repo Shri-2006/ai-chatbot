@@ -59,6 +59,15 @@ const MODELS = {
 
 const DEFAULT_MODEL_ID = 'claude-46-sonnet'
 
+// Tell Vercel to allow larger request bodies (up to 50MB)
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '50mb',
+    },
+  },
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
