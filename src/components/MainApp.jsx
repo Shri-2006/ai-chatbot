@@ -31,8 +31,9 @@ export default function MainApp({ session }) {
     const { data } = await supabase.from('conversations')
       .insert({ user_id: session.user.id, title: 'New Chat', model: modelOverride || profile?.default_model || 'claude-sonnet-4-6' })
       .select().single()
-    if (data) { setConversations(prev => [data, ...prev]); setActiveId(data.id) }
-    return data // return so ChatWindow can use the id immediately
+    if (data) setConversations(prev => [data, ...prev])
+    // Don't setActiveId here — ChatWindow will call onSetActiveId after sending
+    return data
   }
 
   async function deleteConversation(id) {
@@ -61,7 +62,6 @@ export default function MainApp({ session }) {
       />
       <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
         <ChatWindow
-          key={activeId}
           conversation={conversations.find(c => c.id === activeId) || null}
           session={session}
           profile={profile}
@@ -69,6 +69,7 @@ export default function MainApp({ session }) {
           onToggleSidebar={() => setSidebarOpen(o => !o)}
           onUpdateConversation={updateConversation}
           onNewConversation={newConversation}
+          onSetActiveId={id => setActiveId(id)}
         />
       </div>
     </div>
