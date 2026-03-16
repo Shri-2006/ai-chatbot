@@ -114,9 +114,6 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
   const [modelOpen, setModelOpen] = useState(false)
   const [memoryMode, setMemoryMode] = useState('summary')
   const [memoryOpen, setMemoryOpen] = useState(false)
-  const [memoryMode, setMemoryMode] = useState('summary') // 'off' | 'summary' | 'full'
-  const [memoryMenuOpen, setMemoryMenuOpen] = useState(false)
-  const [conversationMemory, setConversationMemory] = useState('')
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
   const fileInputRef = useRef(null)
