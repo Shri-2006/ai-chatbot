@@ -28,48 +28,41 @@ async function getSapToken() {
   return tokenCache.token
 }
 
-// Maps frontend model ID → SAP model name + display name + version
-// SAP model names confirmed from the allowed list in the API error response
-// version: 'claude' uses "1", 'none' omits the field entirely (for models that don't support versioning)
+// Maps frontend model ID → SAP model name + display name
+// version: '1' for Claude, null = omit version field entirely
+// noTemp: true = omit temperature (GPT-5, Mistral Large/Medium don't support it)
 const MODELS = {
-  // Claude 4.6 — version "1"
-  'claude-46-sonnet':       { sap: 'anthropic--claude-4.6-sonnet',       display: 'Claude Sonnet 4.6',     version: '1'    },
-  'claude-46-opus':         { sap: 'anthropic--claude-4.6-opus',         display: 'Claude Opus 4.6',       version: '1'    },
-  // Claude 4.5 — version "1"
-  'claude-45-haiku':        { sap: 'anthropic--claude-4.5-haiku',        display: 'Claude Haiku 4.5',      version: '1'    },
-  'claude-45-sonnet':       { sap: 'anthropic--claude-4.5-sonnet',       display: 'Claude Sonnet 4.5',     version: '1'    },
-  'claude-45-opus':         { sap: 'anthropic--claude-4.5-opus',         display: 'Claude Opus 4.5',       version: '1'    },
-  // Claude 3.x — version "1"
-  'claude-37-sonnet':       { sap: 'anthropic--claude-3.7-sonnet',       display: 'Claude Sonnet 3.7',     version: '1'    },
-  'claude-35-sonnet':       { sap: 'anthropic--claude-3.5-sonnet',       display: 'Claude Sonnet 3.5',     version: '1'    },
-  'claude-3-haiku':         { sap: 'anthropic--claude-3-haiku',          display: 'Claude Haiku 3',        version: '1'    },
-  // OpenAI — no version field
-  'gpt-5':                  { sap: 'gpt-5',                              display: 'GPT-5',                 version: null   },
-  'gpt-5-mini':             { sap: 'gpt-5-mini',                         display: 'GPT-5 Mini',            version: null   },
-  'gpt-4o':                 { sap: 'gpt-4o',                             display: 'GPT-4o',                version: null   },
-  'gpt-4o-mini':            { sap: 'gpt-4o-mini',                        display: 'GPT-4o Mini',           version: null   },
-  'gpt-41':                 { sap: 'gpt-4.1',                            display: 'GPT-4.1',               version: null   },
-  'gpt-41-mini':            { sap: 'gpt-4.1-mini',                       display: 'GPT-4.1 Mini',          version: null   },
-  'gpt-41-nano':            { sap: 'gpt-4.1-nano',                       display: 'GPT-4.1 Nano',          version: null   },
-  'o3':                     { sap: 'o3',                                  display: 'o3',                    version: null   },
-  'o3-mini':                { sap: 'o3-mini',                            display: 'o3 Mini',               version: null   },
-  'o4-mini':                { sap: 'o4-mini',                            display: 'o4 Mini',               version: null   },
-  // Gemini — no version field
-  'gemini-25-pro':          { sap: 'gemini-2.5-pro',                     display: 'Gemini 2.5 Pro',        version: null   },
-  'gemini-25-flash':        { sap: 'gemini-2.5-flash',                   display: 'Gemini 2.5 Flash',      version: null   },
-  'gemini-25-flash-lite':   { sap: 'gemini-2.5-flash-lite',              display: 'Gemini 2.5 Flash Lite', version: null   },
-  'gemini-20-flash':        { sap: 'gemini-2.0-flash',                   display: 'Gemini 2.0 Flash',      version: null   },
-  'gemini-20-flash-lite':   { sap: 'gemini-2.0-flash-lite',              display: 'Gemini 2.0 Flash Lite', version: null   },
-  // Mistral — no version field
-  'mistral-large':          { sap: 'mistralai--mistral-large-instruct',  display: 'Mistral Large',         version: null   },
-  'mistral-medium':         { sap: 'mistralai--mistral-medium-instruct', display: 'Mistral Medium',        version: null   },
-  'mistral-small':          { sap: 'mistralai--mistral-small-instruct',  display: 'Mistral Small',         version: null   },
-  // Amazon Nova — no version field
-  'nova-pro':               { sap: 'amazon--nova-pro',                   display: 'Amazon Nova Pro',       version: null   },
-  'nova-lite':              { sap: 'amazon--nova-lite',                  display: 'Amazon Nova Lite',      version: null   },
-  'nova-micro':             { sap: 'amazon--nova-micro',                 display: 'Amazon Nova Micro',     version: null   },
-  // Meta — no version field
-  'llama3-70b':             { sap: 'meta--llama3-70b-instruct',          display: 'Llama 3 70B',           version: null   },
+  // Claude 4.6
+  'claude-46-sonnet':  { sap: 'anthropic--claude-4.6-sonnet',       display: 'Claude Sonnet 4.6',     version: '1'  },
+  'claude-46-opus':    { sap: 'anthropic--claude-4.6-opus',         display: 'Claude Opus 4.6',       version: '1'  },
+  // Claude 4.5
+  'claude-45-haiku':   { sap: 'anthropic--claude-4.5-haiku',        display: 'Claude Haiku 4.5',      version: '1'  },
+  'claude-45-sonnet':  { sap: 'anthropic--claude-4.5-sonnet',       display: 'Claude Sonnet 4.5',     version: '1'  },
+  'claude-45-opus':    { sap: 'anthropic--claude-4.5-opus',         display: 'Claude Opus 4.5',       version: '1'  },
+  // Claude 3.x
+  'claude-37-sonnet':  { sap: 'anthropic--claude-3.7-sonnet',       display: 'Claude Sonnet 3.7',     version: '1'  },
+  'claude-35-sonnet':  { sap: 'anthropic--claude-3.5-sonnet',       display: 'Claude Sonnet 3.5',     version: '1'  },
+  'claude-3-haiku':    { sap: 'anthropic--claude-3-haiku',          display: 'Claude Haiku 3',        version: '1'  },
+  // OpenAI — GPT-5 and GPT-5 Mini don't support temperature
+  'gpt-5':             { sap: 'gpt-5',                              display: 'GPT-5',                 version: null, noTemp: true },
+  'gpt-5-mini':        { sap: 'gpt-5-mini',                        display: 'GPT-5 Mini',            version: null, noTemp: true },
+  'gpt-4o':            { sap: 'gpt-4o',                            display: 'GPT-4o',                version: null },
+  'gpt-4o-mini':       { sap: 'gpt-4o-mini',                       display: 'GPT-4o Mini',           version: null },
+  'gpt-41':            { sap: 'gpt-4.1',                           display: 'GPT-4.1',               version: null },
+  'gpt-41-mini':       { sap: 'gpt-4.1-mini',                      display: 'GPT-4.1 Mini',          version: null },
+  'gpt-41-nano':       { sap: 'gpt-4.1-nano',                      display: 'GPT-4.1 Nano',          version: null },
+  // Gemini
+  'gemini-25-pro':         { sap: 'gemini-2.5-pro',                display: 'Gemini 2.5 Pro',        version: null },
+  'gemini-25-flash':       { sap: 'gemini-2.5-flash',              display: 'Gemini 2.5 Flash',      version: null },
+  'gemini-25-flash-lite':  { sap: 'gemini-2.5-flash-lite',         display: 'Gemini 2.5 Flash Lite', version: null },
+  'gemini-20-flash':       { sap: 'gemini-2.0-flash',              display: 'Gemini 2.0 Flash',      version: null },
+  'gemini-20-flash-lite':  { sap: 'gemini-2.0-flash-lite',         display: 'Gemini 2.0 Flash Lite', version: null },
+  // Mistral — Large and Medium don't support temperature
+  'mistral-large':     { sap: 'mistralai--mistral-large-instruct',  display: 'Mistral Large',         version: null, noTemp: true },
+  'mistral-medium':    { sap: 'mistralai--mistral-medium-instruct', display: 'Mistral Medium',        version: null, noTemp: true },
+  'mistral-small':     { sap: 'mistralai--mistral-small-instruct',  display: 'Mistral Small',         version: null },
+  // Meta — omit version entirely
+  'llama3-70b':        { sap: 'meta--llama3-70b-instruct',          display: 'Llama 3 70B',           version: null },
 }
 
 const DEFAULT_MODEL_ID = 'claude-46-sonnet'
@@ -89,6 +82,7 @@ export default async function handler(req, res) {
   const sapModelName  = modelInfo.sap
   const displayName   = modelInfo.display
   const modelVersion  = modelInfo.version
+  const noTemp        = modelInfo.noTemp || false
   const apiUrl        = process.env.SAP_AI_API_URL
   const resourceGroup = process.env.RESOURCE_GROUP || 'default'
   const deploymentId  = process.env.SAP_ORCHESTRATION_DEPLOYMENT_ID
@@ -151,8 +145,8 @@ Keep responses clear, friendly, and thorough.`
             model_name:    sapModelName,
             ...(modelVersion ? { model_version: modelVersion } : {}),
             model_params: {
-              max_tokens:  4096,
-              temperature: 0.7,
+              max_tokens: 4096,
+              ...(noTemp ? {} : { temperature: 0.7 }),
             }
           }
         }
