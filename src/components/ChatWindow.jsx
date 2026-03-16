@@ -47,15 +47,45 @@ function toBase64(file) {
   })
 }
 
+async function extractPdfText(file) {
+  // Use pdf.js via CDN to extract text from PDF
+  if (!window.pdfjsLib) {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script')
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+      script.onload = resolve
+      script.onerror = reject
+      document.head.appendChild(script)
+    })
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+  }
+  const arrayBuffer = await file.arrayBuffer()
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  const pages = []
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const textContent = await page.getTextContent()
+    pages.push(textContent.items.map(item => item.str).join(' '))
+  }
+  return pages.join('\n\n')
+}
+
 async function processFile(file) {
   const icon = FILE_ICONS[file.type] || '📎'
+
   if (file.type === 'image/jpeg' || file.type === 'image/png') {
     const base64 = await toBase64(file)
     return { name:file.name, icon, fileType:'image', contentBlock:{ type:'image', source:{ type:'base64', media_type:file.type, data:base64 } } }
   }
   if (file.type === 'application/pdf') {
-    const base64 = await toBase64(file)
-    return { name:file.name, icon, fileType:'pdf', contentBlock:{ type:'document', source:{ type:'base64', media_type:'application/pdf', data:base64 } } }
+    // Extract text from PDF — SAP orchestration doesn't support raw PDF binary
+    const text = await extractPdfText(file)
+    if (!text.trim()) throw new Error('Could not extract text from PDF. It may be a scanned image.')
+    return {
+      name: file.name, icon, fileType: 'pdf',
+      contentBlock: { type: 'text', text: `[Contents of ${file.name}]:\n${text.trim()}` }
+    }
   }
   if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
     const mammoth = (await import('mammoth')).default
@@ -98,8 +128,12 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
 
   async function handleFileSelect(e) {
     const files = Array.from(e.target.files); e.target.value = ''
+    if (pendingFiles.filter(Boolean).length + files.length > 5) {
+      alert('Maximum 5 files at a time. This keeps the request small enough for the AI to process reliably.')
+      return
+    }
     for (const file of files) {
-      if (file.size > 20*1024*1024) { alert(`${file.name} is too large (max 20MB)`); continue }
+      if (file.size > 20*1024*1024) { alert(`${file.name} is too large (max 20MB per file)`); continue }
       try { setPendingFiles(prev => [...prev, null]); const p = await processFile(file); setPendingFiles(prev => [...prev.slice(0,-1), p]) }
       catch(err) { setPendingFiles(prev => prev.slice(0,-1)); alert(`Could not read ${file.name}: ${err.message}`) }
     }
@@ -150,8 +184,11 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
       const reply = data.reply || data.error || 'Something went wrong.'
       const { data:saved } = await supabase.from('messages').insert({ conversation_id:convId, role:'assistant', content:reply, file_refs:[] }).select().single()
       setMessages(prev => [...prev, saved || { id:Date.now(), role:'assistant', content:reply, file_refs:[] }])
-    } catch {
-      setMessages(prev => [...prev, { id:Date.now(), role:'assistant', content:'⚠️ Could not reach the server.', file_refs:[] }])
+    } catch (err) {
+      const msg = err?.message?.includes('Failed to fetch')
+        ? '⚠️ Could not reach the server. Check your internet connection or try again.'
+        : `⚠️ Error: ${err?.message || 'Something went wrong.'}`
+      setMessages(prev => [...prev, { id:Date.now(), role:'assistant', content:msg, file_refs:[] }])
     }
 
     setLoading(false); inputRef.current?.focus()
