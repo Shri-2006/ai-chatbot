@@ -84,10 +84,10 @@ async function processFile(file) {
     if (!text.trim()) throw new Error('Could not extract text from PDF. It may be a scanned image-based PDF.')
     // Truncate to 8000 chars per file to avoid SAP payload limits
     // 5 files × 8000 chars = 40000 chars which SAP can handle
-    const MAX_CHARS = 8000
+    const MAX_CHARS = 4000
     const truncated = text.trim().slice(0, MAX_CHARS)
     const wasTruncated = text.trim().length > MAX_CHARS
-    const note = wasTruncated ? `\n\n[Note: Content truncated to ${MAX_CHARS} characters due to size limits]` : ''
+    const note = wasTruncated ? `\n\n[Note: This PDF was truncated to ${MAX_CHARS} characters. For full content, ask about specific sections.]` : ''
     return {
       name: file.name, icon, fileType: 'pdf',
       contentBlock: { type: 'text', text: `[Contents of ${file.name}]:\n${truncated}${note}` }
@@ -186,7 +186,20 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
 
     try {
       const res = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ messages:apiMessages, model }) })
-      const data = await res.json()
+
+      // Safely parse response — SAP sometimes returns plain text errors instead of JSON
+      const rawText = await res.text()
+      let data
+      try {
+        data = JSON.parse(rawText)
+      } catch {
+        // Not JSON — show the raw SAP error message
+        const reply = `⚠️ Server error: ${rawText.slice(0, 300)}`
+        setMessages(prev => [...prev, { id:Date.now(), role:'assistant', content:reply, file_refs:[] }])
+        setLoading(false)
+        return
+      }
+
       const reply = data.reply || data.error || 'Something went wrong.'
       const { data:saved } = await supabase.from('messages').insert({ conversation_id:convId, role:'assistant', content:reply, file_refs:[] }).select().single()
       setMessages(prev => [...prev, saved || { id:Date.now(), role:'assistant', content:reply, file_refs:[] }])
