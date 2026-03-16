@@ -146,7 +146,7 @@ Keep responses clear, friendly, and thorough.`
           },
           llm_module_config: {
             model_name:    sapModelName,
-            model_version: "1",
+            model_version: sapModelName.startsWith('anthropic--') ? "1" : "latest",
             model_params: {
               max_tokens:  4096,
               temperature: 0.7,
