@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import MessageBubble from './MessageBubble'
 
-// API is now a Vercel serverless function — same domain, no CORS issues
 const API_URL = '/api/chat'
 
 const MODELS = [
@@ -13,7 +12,7 @@ const MODELS = [
   { id:'claude-45-haiku',       label:'Haiku 4.5',           desc:'Fast & cheap',             color:'#22c55e', group:'Claude 4.5'   },
   { id:'claude-45-sonnet',      label:'Sonnet 4.5',          desc:'Balanced',                 color:'#60a5fa', group:'Claude 4.5'   },
   { id:'claude-45-opus',        label:'Opus 4.5',            desc:'Most powerful',            color:'#c084fc', group:'Claude 4.5'   },
-  // Claude 3.x-deprecated
+  // Claude 3.x — deprecated
   //{ id:'claude-37-sonnet',     label:'Sonnet 3.7',          desc:'Extended thinking',        color:'#f59e0b', group:'Claude 3' },
   // OpenAI
   { id:'gpt-5',                label:'GPT-5',               desc:'Latest OpenAI',            color:'#10b981', group:'OpenAI'   },
@@ -48,7 +47,6 @@ function toBase64(file) {
 }
 
 async function extractPdfText(file) {
-  // Use pdf.js via CDN to extract text from PDF
   if (!window.pdfjsLib) {
     await new Promise((resolve, reject) => {
       const script = document.createElement('script')
@@ -73,25 +71,17 @@ async function extractPdfText(file) {
 
 async function processFile(file) {
   const icon = FILE_ICONS[file.type] || '📎'
-
   if (file.type === 'image/jpeg' || file.type === 'image/png') {
     const base64 = await toBase64(file)
     return { name:file.name, icon, fileType:'image', contentBlock:{ type:'image', source:{ type:'base64', media_type:file.type, data:base64 } } }
   }
   if (file.type === 'application/pdf') {
-    // Extract text from PDF — SAP orchestration doesn't support raw PDF binary
     const text = await extractPdfText(file)
     if (!text.trim()) throw new Error('Could not extract text from PDF. It may be a scanned image-based PDF.')
-    // Truncate to 8000 chars per file to avoid SAP payload limits
-    // 5 files × 8000 chars = 40000 chars which SAP can handle
     const MAX_CHARS = 4000
     const truncated = text.trim().slice(0, MAX_CHARS)
-    const wasTruncated = text.trim().length > MAX_CHARS
-    const note = wasTruncated ? `\n\n[Note: This PDF was truncated to ${MAX_CHARS} characters. For full content, ask about specific sections.]` : ''
-    return {
-      name: file.name, icon, fileType: 'pdf',
-      contentBlock: { type: 'text', text: `[Contents of ${file.name}]:\n${truncated}${note}` }
-    }
+    const note = text.trim().length > MAX_CHARS ? `\n\n[Note: Truncated to ${MAX_CHARS} chars. Ask about specific sections for more.]` : ''
+    return { name:file.name, icon, fileType:'pdf', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${truncated}${note}` } }
   }
   if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
     const mammoth = (await import('mammoth')).default
@@ -119,25 +109,20 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
   const fileInputRef = useRef(null)
 
   useEffect(() => {
-    // Reset UI state when switching conversations
     setInput('')
     setPendingFiles([])
     setLoading(false)
-
     if (!conversation) { setMessages([]); return }
     setLoadingHistory(true)
     supabase.from('messages').select('*').eq('conversation_id', conversation.id).order('created_at', { ascending:true })
       .then(({ data }) => { if (data) setMessages(data); setLoadingHistory(false) })
     setModel(conversation.model || 'claude-46-sonnet')
     setMemoryMode(conversation.memory_mode || 'summary')
-    setConversationMemory(conversation.memory || '')
-    setMemoryMode(conversation.memory_mode || 'summary')
   }, [conversation?.id])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:'smooth' }) }, [messages])
   useEffect(() => { const close = () => setModelOpen(false); if (modelOpen) window.addEventListener('click', close); return () => window.removeEventListener('click', close) }, [modelOpen])
   useEffect(() => { const close = () => setMemoryOpen(false); if (memoryOpen) window.addEventListener('click', close); return () => window.removeEventListener('click', close) }, [memoryOpen])
-  useEffect(() => { const close = () => setMemoryMenuOpen(false); if (memoryMenuOpen) window.addEventListener('click', close); return () => window.removeEventListener('click', close) }, [memoryMenuOpen])
 
   async function handleFileSelect(e) {
     const files = Array.from(e.target.files); e.target.value = ''
@@ -159,11 +144,10 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
 
     let convId = conversation?.id
     if (!convId) {
-      // Create conversation and set it active — don't return, keep going
       const newConvo = await onNewConversation(model)
       if (!newConvo) return
       convId = newConvo.id
-      onSetActiveId(convId) // update sidebar without remounting ChatWindow
+      onSetActiveId(convId)
     }
 
     setInput(''); setPendingFiles([]); setLoading(true)
@@ -180,19 +164,16 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     // Auto-title on first message
     if (messages.length === 0 && text) {
       fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ messages:[{role:'user',content:text}], model:'claude-haiku-4-5-20251001',
+        body:JSON.stringify({ messages:[{role:'user',content:text}], model:'claude-45-haiku',
           system_override:'Generate a very short title (3-5 words max) for this conversation. Reply with ONLY the title, no quotes.' })
-      }).then(r=>r.json()).then(d => { if(d.reply) onUpdateConversation(convId,{title:d.reply.slice(0,60),model}) })
+      }).then(r=>r.text()).then(t=>{ try { const d=JSON.parse(t); if(d.reply) onUpdateConversation(convId,{title:d.reply.slice(0,60),model}) } catch{} })
     }
 
-    // Build API message history — only keep last 20 messages to avoid huge payloads
-    // Full history is still saved in Supabase, just not sent to the AI every time
-    const MAX_HISTORY = 20
-    const recentMessages = messages.filter(m=>m.id!=='temp-user').slice(-MAX_HISTORY)
+    // Only send last 5 messages when memory is on, 20 when off
+    const HISTORY_LIMIT = memoryMode === 'off' ? 20 : 5
+    const recentMessages = messages.filter(m=>m.id!=='temp-user').slice(-HISTORY_LIMIT)
 
     const apiMessages = recentMessages.map(m => {
-      // For messages that had file attachments, just reference the filenames
-      // (the actual content was in the original message and is now in history)
       if (m.file_refs?.length > 0 && m.role === 'user') {
         return { role: m.role, content: `[Previously attached: ${m.file_refs.map(f=>f.name).join(', ')}]\n${m.content}` }
       }
@@ -201,21 +182,28 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     apiMessages.push({ role:'user', content: files.length>0 ? [...files.map(f=>f.contentBlock), ...(text?[{type:'text',text}]:[])] : text })
 
     try {
-      const res = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
-        messages: apiMessages,
-        model,
-        memory: conversationMemory,
-        memory_mode: memoryMode,
-        attached_file_names: files.map(f => f.name),
-      }) })
+      // Fetch current memory from Supabase
+      let currentMemory = null
+      if (memoryMode !== 'off' && convId) {
+        const { data: convData } = await supabase.from('conversations').select('memory').eq('id', convId).single()
+        currentMemory = convData?.memory || null
+      }
 
-      // Safely parse response — SAP sometimes returns plain text errors instead of JSON
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages:            apiMessages,
+          model,
+          memory:              currentMemory,
+          memory_mode:         memoryMode,
+          attached_file_names: files.map(f => f.name),
+        })
+      })
+
       const rawText = await res.text()
       let data
-      try {
-        data = JSON.parse(rawText)
-      } catch {
-        // Not JSON — show the raw SAP error message
+      try { data = JSON.parse(rawText) } catch {
         const reply = `⚠️ Server error: ${rawText.slice(0, 300)}`
         setMessages(prev => [...prev, { id:Date.now(), role:'assistant', content:reply, file_refs:[] }])
         setLoading(false)
@@ -226,11 +214,11 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
       const { data:saved } = await supabase.from('messages').insert({ conversation_id:convId, role:'assistant', content:reply, file_refs:[] }).select().single()
       setMessages(prev => [...prev, saved || { id:Date.now(), role:'assistant', content:reply, file_refs:[] }])
 
-      // Save updated memory to Supabase and local state
-      if (data.new_memory && memoryMode !== 'off') {
-        setConversationMemory(data.new_memory)
+      // Save updated memory back to Supabase
+      if (data.new_memory && memoryMode !== 'off' && convId) {
         await supabase.from('conversations').update({ memory: data.new_memory, memory_mode: memoryMode }).eq('id', convId)
       }
+
     } catch (err) {
       const msg = err?.message?.includes('Failed to fetch')
         ? '⚠️ Could not reach the server. Check your internet connection or try again.'
@@ -252,10 +240,10 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
           onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--text2)'}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
+
         <div style={{ flex:1, fontSize:14, fontWeight:500, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
           {conversation?.title || 'AI Assistant'}
         </div>
-
 
         {/* Memory mode toggle */}
         <div style={{ position:'relative' }} onClick={e=>e.stopPropagation()}>
@@ -290,7 +278,6 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
                 <button key={m.id} onClick={async () => {
                   setMemoryMode(m.id)
                   setMemoryOpen(false)
-                  // Save preference to conversation
                   if (conversation?.id) {
                     await supabase.from('conversations').update({ memory_mode: m.id }).eq('id', conversation.id)
                   }
@@ -323,7 +310,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color:'var(--text2)' }}><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           {modelOpen && (
-            <div style={{ position:'absolute', right:0, top:'calc(100% + 6px)', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:6, minWidth:220, zIndex:100, boxShadow:'0 8px 30px rgba(0,0,0,0.4)' }}>
+            <div style={{ position:'fixed', right:8, top:'auto', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:6, minWidth:240, maxWidth:'calc(100vw - 16px)', zIndex:1000, boxShadow:'0 8px 30px rgba(0,0,0,0.5)', maxHeight:'70vh', overflowY:'auto' }}>
               {(() => {
                 const groups = [...new Set(MODELS.map(m => m.group))]
                 return groups.map(group => (
@@ -345,54 +332,6 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
                   </div>
                 ))
               })()}
-            </div>
-          )}
-        </div>
-
-        {/* Memory mode toggle */}
-        <div style={{ position:'relative' }} onClick={e=>e.stopPropagation()}>
-          <button onClick={()=>setMemoryMenuOpen(o=>!o)} style={{
-            display:'flex', alignItems:'center', gap:6,
-            background:'var(--surface)', border:'1px solid var(--border)',
-            borderRadius:9, padding:'6px 10px', fontSize:12, fontWeight:500,
-            color: memoryMode === 'off' ? 'var(--text2)' : memoryMode === 'full' ? '#a855f7' : '#22c55e',
-            transition:'border-color .15s',
-          }}
-            onMouseEnter={e=>e.currentTarget.style.borderColor='var(--accent)'}
-            onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
-            {memoryMode === 'off' ? '🧠 Off' : memoryMode === 'summary' ? '🧠 Summary' : '🧠 Full'}
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color:'var(--text2)' }}><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-
-          {memoryMenuOpen && (
-            <div style={{ position:'fixed', right:8, top:'auto', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:6, minWidth:220, zIndex:1000, boxShadow:'0 8px 30px rgba(0,0,0,0.4)' }}>
-              <div style={{ padding:'6px 12px 4px', fontSize:10.5, fontWeight:600, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em' }}>Memory Mode</div>
-              {[
-                { id:'off',     label:'Off',          desc:'No memory — send last 20 messages',      color:'var(--text2)' },
-                { id:'summary', label:'Summary',       desc:'Brief rolling summary (default, fast)',  color:'#22c55e'     },
-                { id:'full',    label:'Full Memory',   desc:'Detailed record of everything discussed', color:'#a855f7'     },
-              ].map(m => (
-                <button key={m.id} onClick={async () => {
-                  setMemoryMode(m.id)
-                  setMemoryMenuOpen(false)
-                  if (conversation?.id) {
-                    await supabase.from('conversations').update({ memory_mode: m.id }).eq('id', conversation.id)
-                  }
-                }} style={{
-                  width:'100%', display:'flex', alignItems:'center', gap:10,
-                  padding:'9px 12px', borderRadius:8, border:'none', textAlign:'left',
-                  background: memoryMode===m.id ? 'var(--surface2)' : 'transparent', transition:'background .12s',
-                }}
-                  onMouseEnter={e=>{ if(memoryMode!==m.id) e.currentTarget.style.background='rgba(255,255,255,0.04)' }}
-                  onMouseLeave={e=>{ if(memoryMode!==m.id) e.currentTarget.style.background='transparent' }}>
-                  <span style={{ width:8, height:8, borderRadius:'50%', background:m.color, flexShrink:0 }}/>
-                  <div>
-                    <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{m.label}</div>
-                    <div style={{ fontSize:11.5, color:'var(--text2)' }}>{m.desc}</div>
-                  </div>
-                  {memoryMode===m.id && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" style={{ marginLeft:'auto' }}><polyline points="20 6 9 17 4 12"/></svg>}
-                </button>
-              ))}
             </div>
           )}
         </div>
