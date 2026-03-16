@@ -11,7 +11,7 @@ https://ai-chatbot-eight-pi-10.vercel.app/
 User-> Vercel (REACT and Vite frontend hoster, and holds function for SAP token, AI API key, and returns response)-> Auth of User, Chat history to Supabase, then API AI requests to SAP AI core)
 
 
-
+ 
 #Setup:
 Clone this repo, copy .env.example to .env local and fill credentials , run npm install.
 
