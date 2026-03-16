@@ -169,12 +169,19 @@ Keep responses clear, friendly, and thorough.`
       }
     )
 
+    const rawText = await aiResp.text()
+
     if (!aiResp.ok) {
-      const text = await aiResp.text()
-      return res.status(502).json({ error: `SAP error ${aiResp.status}: ${text.slice(0, 400)}` })
+      return res.status(502).json({ error: `SAP error ${aiResp.status}: ${rawText.slice(0, 400)}` })
     }
 
-    const result = await aiResp.json()
+    let result
+    try {
+      result = JSON.parse(rawText)
+    } catch {
+      return res.status(502).json({ error: `SAP returned invalid response: ${rawText.slice(0, 300)}` })
+    }
+
     const reply  =
       result.orchestration_result?.choices?.[0]?.message?.content ||
       result.module_results?.llm?.choices?.[0]?.message?.content  ||
