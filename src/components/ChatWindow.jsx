@@ -68,7 +68,7 @@ async function processFile(file) {
   throw new Error('Unsupported file type')
 }
 
-export default function ChatWindow({ conversation, session, profile, sidebarOpen, onToggleSidebar, onUpdateConversation, onNewConversation }) {
+export default function ChatWindow({ conversation, session, profile, sidebarOpen, onToggleSidebar, onUpdateConversation, onNewConversation, onSetActiveId }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [pendingFiles, setPendingFiles] = useState([])
@@ -81,11 +81,16 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
   const fileInputRef = useRef(null)
 
   useEffect(() => {
+    // Reset UI state when switching conversations
+    setInput('')
+    setPendingFiles([])
+    setLoading(false)
+
     if (!conversation) { setMessages([]); return }
     setLoadingHistory(true)
     supabase.from('messages').select('*').eq('conversation_id', conversation.id).order('created_at', { ascending:true })
       .then(({ data }) => { if (data) setMessages(data); setLoadingHistory(false) })
-    setModel(conversation.model || 'claude-sonnet-4-6')
+    setModel(conversation.model || 'claude-46-sonnet')
   }, [conversation?.id])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:'smooth' }) }, [messages])
@@ -107,10 +112,11 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
 
     let convId = conversation?.id
     if (!convId) {
-      // Create conversation first, passing current model so it's saved correctly
+      // Create conversation and set it active — don't return, keep going
       const newConvo = await onNewConversation(model)
       if (!newConvo) return
       convId = newConvo.id
+      onSetActiveId(convId) // update sidebar without remounting ChatWindow
     }
 
     setInput(''); setPendingFiles([]); setLoading(true)
