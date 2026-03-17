@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import AccountModal from './AccountModal'
 
 function groupByDate(convos) {
   const now = new Date()
@@ -18,12 +19,13 @@ function groupByDate(convos) {
   return groups
 }
 
-export default function Sidebar({ open, conversations, activeId, profile, onSelect, onNew, onDelete, onSignOut }) {
+export default function Sidebar({ open, conversations, activeId, profile, session, onSelect, onNew, onDelete, onSignOut }) {
   const [deletingId, setDeletingId] = useState(null)
+  const [accountOpen, setAccountOpen] = useState(false)
   const groups = groupByDate(conversations)
 
   return (
-    <div style={{ width:'var(--sidebar-w)', flexShrink:0, height:'100vh', background:'var(--sidebar-bg)', borderRight:'1px solid var(--border)', display:'flex', flexDirection:'column', transition:'transform .25s ease', transform:open?'translateX(0)':'translateX(-100%)', position:'relative', zIndex:50 }}>
+    <div style={{ width:'var(--sidebar-w)', flexShrink:0, height:'100dvh', background:'var(--sidebar-bg)', borderRight:'1px solid var(--border)', display:'flex', flexDirection:'column', transition:'transform .25s ease', transform:open?'translateX(0)':'translateX(-100%)', position:'fixed', top:0, left:0, zIndex:200, overflowX:'hidden' }}>
 
       {/* Header */}
       <div style={{ padding:'16px 14px 12px', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
@@ -75,14 +77,25 @@ export default function Sidebar({ open, conversations, activeId, profile, onSele
               {profile?.display_name||'User'}
             </div>
           </div>
-          <button onClick={onSignOut} title="Sign out"
-            style={{ background:'none', border:'none', color:'var(--text3)', padding:4, borderRadius:6, display:'flex', transition:'color .15s' }}
-            onMouseEnter={e => e.currentTarget.style.color='var(--text)'}
-            onMouseLeave={e => e.currentTarget.style.color='var(--text3)'}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-          </button>
+          <div style={{ display:'flex', gap:4 }}>
+            <button onClick={() => setAccountOpen(true)} title="Account settings"
+              style={{ background:'none', border:'none', color:'var(--text3)', padding:4, borderRadius:6, display:'flex', transition:'color .15s' }}
+              onMouseEnter={e => e.currentTarget.style.color='var(--text)'}
+              onMouseLeave={e => e.currentTarget.style.color='var(--text3)'}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            </button>
+            <button onClick={onSignOut} title="Sign out"
+              style={{ background:'none', border:'none', color:'var(--text3)', padding:4, borderRadius:6, display:'flex', transition:'color .15s' }}
+              onMouseEnter={e => e.currentTarget.style.color='var(--text)'}
+              onMouseLeave={e => e.currentTarget.style.color='var(--text3)'}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+            </button>
+          </div>
         </div>
       </div>
+    </div>
+
+      {accountOpen && <AccountModal profile={profile} session={session} onClose={() => setAccountOpen(false)} />}
     </div>
   )
 }
