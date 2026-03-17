@@ -1,6 +1,7 @@
 # AI Chatbot
 
 Live Demo: https://ai-chatbot-eight-pi-10.vercel.app/
+
 Additional Repo: https://github.com/Shri-2006/searxng-ping
 
 A full-stack AI chatbot built with SAP AI Core, similar to Claude.ai or ChatGPT. Supports multiple AI providers, persistent memory, RAG document search, hybrid web search via SearXNG, and multi-device sync.
