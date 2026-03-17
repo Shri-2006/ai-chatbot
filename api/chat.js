@@ -113,66 +113,77 @@ async function duckDuckGoSearch(query) {
   try {
     // DuckDuckGo instant answer API — no key needed
     const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`
-    const resp = await fetch(url, { headers: { 'User-Agent': 'AI-Chatbot/1.0' } })
+    const resp = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 AI-Chatbot/1.0' } })
     if (!resp.ok) return null
     const data = await resp.json()
 
     const results = []
 
-    // Abstract (main answer)
-    if (data.AbstractText) {
-      results.push(`**${data.AbstractSource}**: ${data.AbstractText}`)
+    // Answer (direct fact — highest priority)
+    if (data.Answer) {
+      results.push(`Direct answer: ${data.Answer}`)
     }
 
-    // Answer (direct fact)
-    if (data.Answer) {
-      results.push(`**Direct answer**: ${data.Answer}`)
+    // Abstract (main answer)
+    if (data.AbstractText) {
+      results.push(`${data.AbstractSource}: ${data.AbstractText}`)
+      if (data.AbstractURL) results.push(`Source: ${data.AbstractURL}`)
+    }
+
+    // Definition
+    if (data.Definition) {
+      results.push(`Definition (${data.DefinitionSource}): ${data.Definition}`)
+    }
+
+    // Infobox facts
+    if (data.Infobox?.content?.length) {
+      const facts = data.Infobox.content
+        .filter(f => f.label && f.value)
+        .slice(0, 6)
+        .map(f => `${f.label}: ${f.value}`)
+      if (facts.length) results.push('Facts:\n' + facts.join('\n'))
     }
 
     // Related topics
     if (data.RelatedTopics?.length) {
       const topics = data.RelatedTopics
-        .filter(t => t.Text)
-        .slice(0, 4)
-        .map(t => `- ${t.Text}`)
-      if (topics.length) results.push(`**Related:**\n${topics.join('\n')}`)
-    }
-
-    // Infobox
-    if (data.Infobox?.content?.length) {
-      const facts = data.Infobox.content
-        .filter(f => f.label && f.value)
+        .filter(t => t.Text && !t.Topics) // skip category headers
         .slice(0, 5)
-        .map(f => `- ${f.label}: ${f.value}`)
-      if (facts.length) results.push(`**Facts:**\n${facts.join('\n')}`)
+        .map(t => `- ${t.Text}`)
+      if (topics.length) results.push('Related:\n' + topics.join('\n'))
     }
 
-    if (!results.length) return null
+    // Note: DuckDuckGo instant answers don't include live news
+    // For news queries, be transparent about the limitation
+    if (!results.length) {
+      return `No instant answer found for "${query}". DuckDuckGo's free API does not provide live news results. The AI's knowledge cutoff applies for this query.`
+    }
+
     return results.join('\n\n')
-  } catch {
+  } catch (err) {
     return null
   }
 }
 
-async function shouldSearch(userMessage, callSAP) {
-  // Use Haiku to quickly decide if a web search would help
-  const system = `You decide if a user message requires a real-time web search to answer accurately.
-Respond with ONLY "yes" or "no".
-Search is needed for: current events, news, prices, sports scores, weather, recent releases, 
-"what is X trading at", "latest news on X", "who won X", "is X still Y", anything time-sensitive.
-Search is NOT needed for: coding help, math, explanations of concepts, file analysis, 
-historical facts, general knowledge that doesn't change, personal questions.`
-
-  try {
-    const result = await callSAP(
-      'anthropic--claude-4.5-haiku', '1', false,
-      [{ role: 'user', content: `Does this message need a web search? "${userMessage}"` }],
-      system
-    )
-    return result.trim().toLowerCase().startsWith('yes')
-  } catch {
-    return false
-  }
+async function shouldSearch(userMessage) {
+  // Simple keyword-based check — faster and more reliable than asking Haiku
+  const msg = userMessage.toLowerCase()
+  
+  // Always search for these patterns
+  const searchPatterns = [
+    /today|tonight|right now|current(ly)?|latest|recent|now/,
+    /what('s| is) the (date|time|day|weather|price|score|news)/,
+    /what happened|what's happening|is .* (happening|still|dead|alive|open|closed)/,
+    /news|breaking|update|attack|war|election|crisis|disaster/,
+    /stock|price|rate|cost|value|worth|market/,
+    /who (is|won|won|leads|rules)/,
+    /when (is|was|did|does|will)/,
+    /score|match|game result|fixture/,
+    /weather|forecast|temperature/,
+    /release|launch|announce/,
+  ]
+  
+  return searchPatterns.some(p => p.test(msg))
 }
 
 async function updateMemory(existingMemory, userMessage, assistantReply, fileNames, mode) {
@@ -282,7 +293,7 @@ export default async function handler(req, res) {
         ? lastUserMsg.content
         : JSON.stringify(lastUserMsg?.content)
 
-      const needsSearch = await shouldSearch(userText, callSAP)
+      const needsSearch = await shouldSearch(userText)
       if (needsSearch) {
         searchQuery = userText
         webContext = await duckDuckGoSearch(userText)
