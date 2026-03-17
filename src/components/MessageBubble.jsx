@@ -75,9 +75,10 @@ export default function MessageBubble({ message }) {
             ))}
           </div>
         )}
-        {!isUser && message.web_searched && (
-          <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:8, fontSize:11.5, color:'var(--text2)', borderBottom:'1px solid var(--border)', paddingBottom:8 }}>
-            <span>🔍</span> <span>Searched the web</span>
+        {!isUser && (message.web_searched || message.rag_used) && (
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8, fontSize:11.5, color:'var(--text2)', borderBottom:'1px solid var(--border)', paddingBottom:8 }}>
+            {message.web_searched && <span style={{ display:'flex', alignItems:'center', gap:4 }}>🔍 Searched the web</span>}
+            {message.rag_used     && <span style={{ display:'flex', alignItems:'center', gap:4 }}>📚 Used knowledge base</span>}
           </div>
         )}
         {isUser
