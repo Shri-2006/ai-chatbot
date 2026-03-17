@@ -394,17 +394,23 @@ export default async function handler(req, res) {
 
     // ── RAG: search stored document chunks ──────────────────────────────────
     let ragContext = null
-    const convId = req.body?.conversation_id
-    if (convId) {
-      const lastUserMsg = messages[messages.length - 1]
-      const userText = typeof lastUserMsg?.content === 'string'
-        ? lastUserMsg.content
-        : JSON.stringify(lastUserMsg?.content || '')
+    try {
+      const convId = req.body?.conversation_id
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      if (convId && serviceKey) {
+        const lastUserMsg = messages[messages.length - 1]
+        const userText = typeof lastUserMsg?.content === 'string'
+          ? lastUserMsg.content
+          : JSON.stringify(lastUserMsg?.content || '')
 
-      const chunkExists = await hasStoredChunks(convId)
-      if (chunkExists) {
-        ragContext = await searchChunks(convId, userText)
+        const chunkExists = await hasStoredChunks(convId)
+        if (chunkExists) {
+          ragContext = await searchChunks(convId, userText)
+        }
       }
+    } catch (ragErr) {
+      console.error('RAG error (non-fatal):', ragErr.message)
+      // RAG failure never breaks the main response
     }
 
     // ── Build final system prompt with web + RAG context ──────────────────
