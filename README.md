@@ -4,7 +4,13 @@ Live Demo: https://ai-chatbot-eight-pi-10.vercel.app/
 
 Additional Repo: https://github.com/Shri-2006/searxng-ping
 
-A full-stack AI chatbot built with SAP AI Core, similar to Claude.ai or ChatGPT. Supports multiple AI providers, persistent memory, RAG document search, hybrid web search via SearXNG, and multi-device sync.
+A full-stack AI chatbot with hybrid retrieval (memory + document RAG + live web search), built using SAP AI Core.
+It has:
+- Multi-model support (Claude, GPT, Gemini)
+- Persistent cross-device chat memory
+- Document-based question answering (RAG)
+- Real-time web search via SearXNG
+- Multi-user authentication and deployment on Vercel
 
 ---
 
@@ -14,16 +20,17 @@ A full-stack AI chatbot built with SAP AI Core, similar to Claude.ai or ChatGPT.
 - **Persistent chat history** — conversations saved to Supabase and synced across all devices and browsers
 - **Multi-user authentication** — sign up and log in with email and password
 - **Conversation memory** — three modes per conversation:
-  - 🧠 **Off** — sends last 20 messages each time (no memory)
-  - 📝 **Summary** — rolling summary updated after each reply (default, fast)
-  - 💡 **Full Memory** — detailed record of everything discussed
-- **RAG (Retrieval Augmented Generation)** — uploaded documents are chunked and stored in Supabase. Each message automatically retrieves the most relevant sections using PostgreSQL full-text search. No truncation — all document content is searchable
-- **Hybrid web search (SearXNG)** — self-hosted SearXNG instance on HuggingFace Spaces used as the search backend. Automatically searches when the query needs current information (news, prices, events). Falls back to DuckDuckGo if SearXNG is unavailable. News and price queries use `time_range=day` for fresh results
+  -  Off — sends last 20 messages each time (no memory)
+  -  Summary — rolling summary updated after each reply (default, fast)
+  -  Full Memory — detailed record of everything discussed
+- **RAG (Retrieval Augmented Generation)** —uploaded documents are chunked and stored in Supabase. Relevant sections are retrieved using search and injected into the model prompt for context-aware responses.
+- **Hybrid web search (SearXNG)** — integrates a self-hosted SearXNG instance for real-time results. The system conditionally triggers search for time-sensitive queries and falls back to DuckDuckGo if unavailable.
 - **File attachments** — JPG, PNG, PDF, DOCX, TXT supported (up to 5 files, 20MB each). PDFs are extracted client-side via pdf.js
 - **Auto-generated conversation titles** — generated from the first message using Haiku
 - **Account management** — change password and delete account from the sidebar
 - **Mobile friendly** — responsive layout, works as a PWA (Add to Home Screen on Android/iOS)
 - **Conversations grouped by date** — Today, Yesterday, This week, This month, Older
+- **Hybrid context system** — dynamically combines memory, document retrieval, and live search to improve response quality
 
 ---
 
@@ -223,3 +230,5 @@ After deploying, add your Vercel URL to **Supabase → Authentication → URL Co
 - DuckDuckGo fallback returns instant answers only, not full web results
 - SAP AI Core has occasional 503 errors during high load — retrying the message usually works
 - Conversation memory adds a small delay per message (Haiku runs in the background after each reply)
+
+Didn't use embeddings because full-text search is simpler to implement and works well enough. I may add embeddings later to improve results but for now this handles current use cases.
