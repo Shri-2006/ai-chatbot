@@ -28,6 +28,9 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Prevent iOS bounce scroll */
+html, body { overscroll-behavior: none; }
+
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
@@ -35,3 +38,37 @@ html, body, #root {
 button { cursor: pointer; font-family: var(--font); }
 input, textarea { font-family: var(--font); }
 a { color: var(--accent); }
+
+/* ── Desktop: overlay hidden, sidebar always shown ── */
+.sidebar-overlay { display: none !important; }
+
+/* ── Mobile ──────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Overlay visible on mobile when sidebar open */
+  .sidebar-overlay { display: block !important; }
+
+  /* Sidebar is full-width on very small screens */
+  :root { --sidebar-w: min(280px, 85vw); }
+
+  /* Better tap targets */
+  button { min-height: 38px; }
+
+  /* Prevent horizontal overflow on message bubbles */
+  .msg-bubble {
+    max-width: calc(100vw - 72px) !important;
+    word-break: break-word;
+  }
+  .code-block pre { font-size: 11.5px !important; }
+  .code-block { font-size: 11.5px !important; }
+
+  /* Compact code blocks on mobile */
+  .code-block pre { padding: 10px 12px !important; }
+}
+
+/* ── Very small screens (< 400px) ───────────────── */
+@media (max-width: 400px) {
+  /* Hide memory text label on tiny screens — keep icon */
+  .memory-label-text { display: none !important; }
+  /* Hide model label text on tiny screens — keep dot + chevron */
+  .model-label-text { display: none !important; }
+}
