@@ -165,25 +165,51 @@ async function duckDuckGoSearch(query) {
   }
 }
 
-async function shouldSearch(userMessage) {
-  // Simple keyword-based check — faster and more reliable than asking Haiku
+async function shouldSearch(userMessage, callSAP) {
   const msg = userMessage.toLowerCase()
-  
-  // Always search for these patterns
+
+  // Step 1 — keyword fast-path: obvious real-time queries go straight to search
   const searchPatterns = [
     /today|tonight|right now|current(ly)?|latest|recent|now/,
     /what('s| is) the (date|time|day|weather|price|score|news)/,
     /what happened|what's happening|is .* (happening|still|dead|alive|open|closed)/,
     /news|breaking|update|attack|war|election|crisis|disaster/,
     /stock|price|rate|cost|value|worth|market/,
-    /who (is|won|won|leads|rules)/,
+    /who (is|won|leads|rules)/,
     /when (is|was|did|does|will)/,
     /score|match|game result|fixture/,
     /weather|forecast|temperature/,
     /release|launch|announce/,
   ]
-  
-  return searchPatterns.some(p => p.test(msg))
+
+  if (searchPatterns.some(p => p.test(msg))) return true
+
+  // Step 2 — keyword fast-path: obvious no-search queries skip Haiku entirely
+  const noSearchPatterns = [
+    /^(hi|hello|hey|thanks|thank you|ok|okay|sure|yes|no|bye)/,
+    /how do (i|you|we) (code|write|fix|debug|build|create|make)/,
+    /what is (a |an )?(function|variable|class|array|loop|algorithm|recursion)/,
+    /explain|summarize|translate|rewrite|improve|fix (my|this|the)/,
+  ]
+
+  if (noSearchPatterns.some(p => p.test(msg))) return false
+
+  // Step 3 — ambiguous: ask Haiku to decide
+  const system = `You decide if a user message needs a real-time web search to answer accurately.
+Respond ONLY with "yes" or "no". Be generous — when in doubt, say yes.
+YES for: anything time-sensitive, current events, real people's current status, recent releases, live data.
+NO for: coding help, math, explaining concepts, analyzing uploaded files, creative writing, historical facts.`
+
+  try {
+    const result = await callSAP(
+      'anthropic--claude-4.5-haiku', '1', false,
+      [{ role: 'user', content: `Search needed? "${userMessage}"` }],
+      system
+    )
+    return result.trim().toLowerCase().startsWith('yes')
+  } catch {
+    return false
+  }
 }
 
 async function updateMemory(existingMemory, userMessage, assistantReply, fileNames, mode) {
@@ -293,7 +319,7 @@ export default async function handler(req, res) {
         ? lastUserMsg.content
         : JSON.stringify(lastUserMsg?.content)
 
-      const needsSearch = await shouldSearch(userText)
+      const needsSearch = await shouldSearch(userText, callSAP)
       if (needsSearch) {
         searchQuery = userText
         webContext = await duckDuckGoSearch(userText)
