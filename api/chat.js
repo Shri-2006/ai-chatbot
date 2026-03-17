@@ -116,26 +116,38 @@ async function searchChunks(conversationId, query) {
   if (!supabaseUrl || !supabaseKey) return null
 
   try {
-    // Use PostgreSQL full-text search
-    const searchQuery = query
+    // Build search terms from query
+    const terms = query
       .replace(/[^a-zA-Z0-9 ]/g, ' ')
       .trim()
       .split(/\s+/)
       .filter(w => w.length > 2)
-      .join(' & ')
 
-    if (!searchQuery) return null
+    let chunks = []
 
-    const url = `${supabaseUrl}/rest/v1/document_chunks?conversation_id=eq.${conversationId}&search_vector=fts.${encodeURIComponent(searchQuery)}&order=chunk_index.asc&limit=6`
-    const resp = await fetch(url, {
-      headers: {
-        'apikey':        supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
+    // Try full-text search first with proper Supabase FTS syntax
+    if (terms.length > 0) {
+      const searchQuery = terms.join(' | ') // OR search — more results
+      const ftsUrl = `${supabaseUrl}/rest/v1/document_chunks?conversation_id=eq.${conversationId}&search_vector=fts(english).${encodeURIComponent(searchQuery)}&order=chunk_index.asc&limit=6`
+      const ftsResp = await fetch(ftsUrl, {
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+      })
+      if (ftsResp.ok) {
+        chunks = await ftsResp.json()
       }
-    })
+    }
 
-    if (!resp.ok) return null
-    const chunks = await resp.json()
+    // Fallback: if FTS returns nothing, just get first 6 chunks from conversation
+    if (!chunks?.length) {
+      const fallbackUrl = `${supabaseUrl}/rest/v1/document_chunks?conversation_id=eq.${conversationId}&order=chunk_index.asc&limit=6`
+      const fallbackResp = await fetch(fallbackUrl, {
+        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+      })
+      if (fallbackResp.ok) {
+        chunks = await fallbackResp.json()
+      }
+    }
+
     if (!chunks?.length) return null
 
     // Group by file and format
@@ -145,11 +157,15 @@ async function searchChunks(conversationId, query) {
       byFile[chunk.file_name].push(chunk.content)
     }
 
-    const formatted = Object.entries(byFile).map(([file, contents]) =>
-      `[From ${file}]:\n${contents.join('\n---\n')}`
-    ).join('\n\n')
+    return Object.entries(byFile).map(([file, contents]) =>
+      `[From ${file}]:
+${contents.join('
+---
+')}`
+    ).join('
 
-    return formatted
+')
+
   } catch {
     return null
   }
