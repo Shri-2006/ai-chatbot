@@ -7,7 +7,8 @@ export default function MainApp({ session }) {
   const [conversations, setConversations] = useState([])
   const [activeId, setActiveId] = useState(null)
   const [profile, setProfile] = useState(null)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Default sidebar closed on mobile, open on desktop
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768)
 
   useEffect(() => {
     supabase.from('profiles').select('*').eq('id', session.user.id).single()
@@ -29,10 +30,9 @@ export default function MainApp({ session }) {
 
   async function newConversation(modelOverride) {
     const { data } = await supabase.from('conversations')
-      .insert({ user_id: session.user.id, title: 'New Chat', model: modelOverride || profile?.default_model || 'claude-sonnet-4-6' })
+      .insert({ user_id: session.user.id, title: 'New Chat', model: modelOverride || profile?.default_model || 'claude-46-sonnet' })
       .select().single()
     if (data) setConversations(prev => [data, ...prev])
-    // Don't setActiveId here — ChatWindow will call onSetActiveId after sending
     return data
   }
 
@@ -48,7 +48,22 @@ export default function MainApp({ session }) {
   }
 
   return (
-    <div style={{ display:'flex', height:'100vh', overflow:'hidden' }}>
+    <div style={{ display:'flex', height:'100dvh', overflow:'hidden', position:'relative' }}>
+
+      {/* Overlay — only visible on mobile via CSS class */}
+      <div
+        className="sidebar-overlay"
+        onClick={() => setSidebarOpen(false)}
+        style={{
+          position:'fixed', inset:0,
+          background:'rgba(0,0,0,0.55)',
+          zIndex:199,
+          opacity: sidebarOpen ? 1 : 0,
+          pointerEvents: sidebarOpen ? 'auto' : 'none',
+          transition: 'opacity .25s ease',
+        }}
+      />
+
       <Sidebar
         open={sidebarOpen}
         conversations={conversations}
@@ -60,7 +75,8 @@ export default function MainApp({ session }) {
         onDelete={deleteConversation}
         onSignOut={() => supabase.auth.signOut()}
       />
-      <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+
+      <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column', width:'100%', minWidth:0 }}>
         <ChatWindow
           conversation={conversations.find(c => c.id === activeId) || null}
           session={session}
