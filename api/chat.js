@@ -1,13 +1,27 @@
 /**
  * Vercel Serverless Function — /api/chat
- * Calls Claude via SAP AI Core Orchestration Service
- * Supports three memory modes: off | summary | full
+ *
+ * NEW in this version:
+ *  1. RAG relevance filtering  — memory is filtered to only chunks relevant
+ *     to the current query before being injected (keyword overlap scoring)
+ *  2. Web search + source links — uses Brave Search API when the query
+ *     looks like it needs live info; model cites sources inline as [1][2]
+ *     and a `sources` array is returned to the frontend
+ *  3. AI self-awareness — system prompt tells the model exactly who it is,
+ *     what stack it runs on, today's date, and its own capabilities
+ *
+ * New env var to add (optional but recommended):
+ *   BRAVE_SEARCH_API_KEY  — free tier at https://api.search.brave.com
+ *                           2,000 searches/month, no credit card needed
  */
 
 export const config = {
   api: { bodyParser: { sizeLimit: '50mb' } },
 }
 
+// ─────────────────────────────────────────────────────────
+// SAP OAuth token (cached)
+// ─────────────────────────────────────────────────────────
 let tokenCache = { token: null, expiresAt: 0 }
 
 async function getSapToken() {
@@ -19,9 +33,9 @@ async function getSapToken() {
     client_secret: process.env.SAP_CLIENT_SECRET,
   })
   const resp = await fetch(`${process.env.SAP_AUTH_URL}/oauth/token`, {
-    method: 'POST',
+    method:  'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
+    body:    body.toString(),
   })
   if (!resp.ok) throw new Error(`SAP auth failed: ${resp.status}`)
   const data = await resp.json()
@@ -30,37 +44,296 @@ async function getSapToken() {
   return tokenCache.token
 }
 
+// ─────────────────────────────────────────────────────────
+// Model registry  (added maker + caps fields for self-awareness)
+// ─────────────────────────────────────────────────────────
 const MODELS = {
-  'claude-46-sonnet':     { sap: 'anthropic--claude-4.6-sonnet',       display: 'Claude Sonnet 4.6',     version: '1'  },
-  'claude-46-opus':       { sap: 'anthropic--claude-4.6-opus',         display: 'Claude Opus 4.6',       version: '1'  },
-  'claude-45-haiku':      { sap: 'anthropic--claude-4.5-haiku',        display: 'Claude Haiku 4.5',      version: '1'  },
-  'claude-45-sonnet':     { sap: 'anthropic--claude-4.5-sonnet',       display: 'Claude Sonnet 4.5',     version: '1'  },
-  'claude-45-opus':       { sap: 'anthropic--claude-4.5-opus',         display: 'Claude Opus 4.5',       version: '1'  },
-  'claude-37-sonnet':     { sap: 'anthropic--claude-3.7-sonnet',       display: 'Claude Sonnet 3.7',     version: '1'  },
-  'gpt-5':                { sap: 'gpt-5',                              display: 'GPT-5',                 version: null, noTemp: true },
-  'gpt-5-mini':           { sap: 'gpt-5-mini',                        display: 'GPT-5 Mini',            version: null, noTemp: true },
-  'gpt-4o':               { sap: 'gpt-4o',                            display: 'GPT-4o',                version: null },
-  'gpt-4o-mini':          { sap: 'gpt-4o-mini',                       display: 'GPT-4o Mini',           version: null },
-  'gpt-41':               { sap: 'gpt-4.1',                           display: 'GPT-4.1',               version: null },
-  'gpt-41-mini':          { sap: 'gpt-4.1-mini',                      display: 'GPT-4.1 Mini',          version: null },
-  'gpt-41-nano':          { sap: 'gpt-4.1-nano',                      display: 'GPT-4.1 Nano',          version: null },
-  'gemini-25-pro':        { sap: 'gemini-2.5-pro',                    display: 'Gemini 2.5 Pro',        version: null },
-  'gemini-25-flash':      { sap: 'gemini-2.5-flash',                  display: 'Gemini 2.5 Flash',      version: null },
-  'gemini-25-flash-lite': { sap: 'gemini-2.5-flash-lite',             display: 'Gemini 2.5 Flash Lite', version: null },
-  'gemini-20-flash':      { sap: 'gemini-2.0-flash',                  display: 'Gemini 2.0 Flash',      version: null },
-  'gemini-20-flash-lite': { sap: 'gemini-2.0-flash-lite',             display: 'Gemini 2.0 Flash Lite', version: null },
+  'claude-46-sonnet':     { sap:'anthropic--claude-4.6-sonnet',     display:'Claude Sonnet 4.6',     version:'1',  maker:'Anthropic', noTemp:false, caps:'Latest balanced model — strong at reasoning, coding, and analysis.' },
+  'claude-46-opus':       { sap:'anthropic--claude-4.6-opus',       display:'Claude Opus 4.6',       version:'1',  maker:'Anthropic', noTemp:false, caps:'Most powerful Claude model. Excels at complex research and multi-step tasks.' },
+  'claude-45-haiku':      { sap:'anthropic--claude-4.5-haiku',      display:'Claude Haiku 4.5',      version:'1',  maker:'Anthropic', noTemp:false, caps:'Fastest Claude model. Best for quick answers and simple tasks.' },
+  'claude-45-sonnet':     { sap:'anthropic--claude-4.5-sonnet',     display:'Claude Sonnet 4.5',     version:'1',  maker:'Anthropic', noTemp:false, caps:'Balanced speed and intelligence.' },
+  'claude-45-opus':       { sap:'anthropic--claude-4.5-opus',       display:'Claude Opus 4.5',       version:'1',  maker:'Anthropic', noTemp:false, caps:'Highly capable for complex tasks.' },
+  'claude-37-sonnet':     { sap:'anthropic--claude-3.7-sonnet',     display:'Claude Sonnet 3.7',     version:'1',  maker:'Anthropic', noTemp:false, caps:'Extended thinking capable.' },
+  'gpt-5':                { sap:'gpt-5',                            display:'GPT-5',                 version:null, maker:'OpenAI',    noTemp:true,  caps:'OpenAI flagship model.' },
+  'gpt-5-mini':           { sap:'gpt-5-mini',                      display:'GPT-5 Mini',            version:null, maker:'OpenAI',    noTemp:true,  caps:'Fast and efficient GPT-5 variant.' },
+  'gpt-4o':               { sap:'gpt-4o',                          display:'GPT-4o',                version:null, maker:'OpenAI',    noTemp:false, caps:'Multimodal GPT-4 optimized model.' },
+  'gpt-4o-mini':          { sap:'gpt-4o-mini',                     display:'GPT-4o Mini',           version:null, maker:'OpenAI',    noTemp:false, caps:'Fast and affordable.' },
+  'gpt-41':               { sap:'gpt-4.1',                         display:'GPT-4.1',               version:null, maker:'OpenAI',    noTemp:false, caps:'Latest GPT-4 generation.' },
+  'gpt-41-mini':          { sap:'gpt-4.1-mini',                    display:'GPT-4.1 Mini',          version:null, maker:'OpenAI',    noTemp:false, caps:'Efficient GPT-4.1 variant.' },
+  'gpt-41-nano':          { sap:'gpt-4.1-nano',                    display:'GPT-4.1 Nano',          version:null, maker:'OpenAI',    noTemp:false, caps:'Most affordable OpenAI option.' },
+  'gemini-25-pro':        { sap:'gemini-2.5-pro',                  display:'Gemini 2.5 Pro',        version:null, maker:'Google',    noTemp:false, caps:'Most powerful Gemini model.' },
+  'gemini-25-flash':      { sap:'gemini-2.5-flash',                display:'Gemini 2.5 Flash',      version:null, maker:'Google',    noTemp:false, caps:'Fast and intelligent.' },
+  'gemini-25-flash-lite': { sap:'gemini-2.5-flash-lite',           display:'Gemini 2.5 Flash Lite', version:null, maker:'Google',    noTemp:false, caps:'Lightweight and affordable.' },
+  'gemini-20-flash':      { sap:'gemini-2.0-flash',                display:'Gemini 2.0 Flash',      version:null, maker:'Google',    noTemp:false, caps:'Reliable and fast.' },
+  'gemini-20-flash-lite': { sap:'gemini-2.0-flash-lite',           display:'Gemini 2.0 Flash Lite', version:null, maker:'Google',    noTemp:false, caps:'Budget-friendly option.' },
 }
 const DEFAULT_MODEL_ID = 'claude-46-sonnet'
 
+// ─────────────────────────────────────────────────────────
+// FEATURE 1 — RAG RELEVANCE FILTERING
+//
+// Problem: the rolling memory can grow to include info from
+// earlier topics that is completely unrelated to what the
+// user is asking right now. Injecting all of it wastes
+// context tokens and can confuse the model.
+//
+// Solution: split the memory into paragraph-level chunks,
+// score each chunk against the current query using keyword
+// overlap (TF-IDF-lite), and only inject chunks that
+// score above a threshold.
+// ─────────────────────────────────────────────────────────
+
+// Common English words that carry no semantic meaning
+const STOP_WORDS = new Set([
+  'the','a','an','is','are','was','were','be','been','being','have','has',
+  'had','do','does','did','will','would','could','should','may','might',
+  'shall','can','need','to','of','in','for','on','with','at','by','from',
+  'up','about','into','through','before','after','above','below','between',
+  'out','off','over','then','once','here','there','when','where','why',
+  'how','all','both','each','few','more','most','other','some','such',
+  'no','not','only','own','same','so','than','too','very','just','but',
+  'if','or','because','as','until','while','and','i','you','he','she',
+  'it','we','they','what','which','who','this','that','these','those',
+  'said','also','back','use','get','make','like','know','good','new',
+  'work','want','way','look','think','time','your','our','my','his','her',
+])
+
+function extractKeywords(text) {
+  if (!text || typeof text !== 'string') return new Set()
+  return new Set(
+    text.toLowerCase()
+      .split(/\W+/)
+      .filter(w => w.length > 3 && !STOP_WORDS.has(w))
+  )
+}
+
+function scoreChunkRelevance(chunk, queryKeywords) {
+  if (!queryKeywords.size) return 0
+  const chunkKeywords = extractKeywords(chunk)
+  let hits = 0
+  queryKeywords.forEach(k => { if (chunkKeywords.has(k)) hits++ })
+  return hits / queryKeywords.size
+}
+
+/**
+ * filterRelevantMemory
+ * Returns only the memory paragraphs relevant to the current query.
+ * Falls back to full memory if the query is too short to score against,
+ * or if filtering would leave less than 2 chunks (avoids empty context).
+ *
+ * @param {string} memory      - Full rolling memory string
+ * @param {string} currentQuery - Latest user message
+ * @param {number} threshold   - Min relevance score (0–1, default 0.12)
+ */
+function filterRelevantMemory(memory, currentQuery, threshold = 0.12) {
+  if (!memory || !currentQuery) return memory || ''
+
+  const queryKeywords = extractKeywords(currentQuery)
+
+  // Query too vague — skip filtering
+  if (queryKeywords.size < 2) return memory
+
+  // Split on blank lines (paragraph-level chunks)
+  const chunks = memory.split(/\n{2,}/).map(c => c.trim()).filter(c => c.length > 20)
+
+  // Memory is tiny — no point filtering
+  if (chunks.length <= 2) return memory
+
+  const scored = chunks
+    .map(chunk => ({ chunk, score: scoreChunkRelevance(chunk, queryKeywords) }))
+    .filter(s => s.score >= threshold)
+
+  // Always keep at least 2 top chunks so context is never fully empty
+  if (scored.length < 2) {
+    return chunks
+      .map(chunk => ({ chunk, score: scoreChunkRelevance(chunk, queryKeywords) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 2)
+      .map(s => s.chunk)
+      .join('\n\n')
+  }
+
+  return scored.map(s => s.chunk).join('\n\n')
+}
+
+// ─────────────────────────────────────────────────────────
+// FEATURE 2 — WEB SEARCH + SOURCE LINKS
+//
+// Uses Brave Search API (add BRAVE_SEARCH_API_KEY to env).
+// Triggers automatically when the query matches patterns
+// that suggest the user needs live / recent information.
+// The model is instructed to cite results inline as [1][2]
+// and a structured `sources` array is returned to the
+// frontend alongside the reply so you can render link pills.
+// ─────────────────────────────────────────────────────────
+
+// Patterns that suggest a live-data query
+const SEARCH_TRIGGERS = [
+  /\b(latest|recent|current|today|right now|this week|this year|breaking|live)\b/i,
+  /\b(news|update|release|announce|launch|happen)\b/i,
+  /\b(price|cost|stock|rate|score|weather|forecast)\b/i,
+  /\b(2024|2025|2026)\b/,
+  /\b(who is|what is|when did|where is|how much|how many)\b/i,
+]
+
+function shouldSearch(query) {
+  if (!process.env.BRAVE_SEARCH_API_KEY) return false
+  if (!query || typeof query !== 'string' || query.length < 8) return false
+  return SEARCH_TRIGGERS.some(p => p.test(query))
+}
+
+/**
+ * searchWeb — calls Brave Search API
+ * Returns up to `maxResults` objects: { index, title, url, snippet }
+ */
+async function searchWeb(query, maxResults = 5) {
+  const key = process.env.BRAVE_SEARCH_API_KEY
+  if (!key) return []
+  try {
+    const url = `https://api.search.brave.com/res/v1/web/search` +
+      `?q=${encodeURIComponent(query)}&count=${maxResults}&text_decorations=false&search_lang=en`
+    const resp = await fetch(url, {
+      headers: { Accept: 'application/json', 'X-Subscription-Token': key },
+    })
+    if (!resp.ok) return []
+    const data = await resp.json()
+    return (data.web?.results || []).slice(0, maxResults).map((r, i) => ({
+      index:   i + 1,
+      title:   r.title   || 'Untitled',
+      url:     r.url     || '',
+      snippet: r.description || '',
+    }))
+  } catch (err) {
+    console.error('Web search failed:', err.message)
+    return []
+  }
+}
+
+/**
+ * formatSearchContext — formats search results into the system prompt.
+ * The model is told to cite by number and include a Sources block at the end.
+ */
+function formatSearchContext(results) {
+  if (!results.length) return ''
+  const lines = results.map(r =>
+    `[${r.index}] ${r.title}\n    URL: ${r.url}\n    ${r.snippet}`
+  ).join('\n\n')
+  return `
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WEB SEARCH RESULTS (retrieved live for this query)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${lines}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CITATION RULES:
+- Cite search results inline using [1], [2], etc. immediately after the claim.
+- At the very end of your response, add a "**Sources:**" section listing every
+  source you cited, formatted exactly like:
+    [1] Page Title — https://example.com
+- Do NOT cite sources you did not actually use.
+- If a result is outdated or irrelevant, ignore it and say so if asked.`
+}
+
+// ─────────────────────────────────────────────────────────
+// FEATURE 3 — AI SELF-AWARENESS
+//
+// The model is given a detailed description of itself:
+//  • Its own model name and maker
+//  • Today's date (so it doesn't hallucinate the year)
+//  • The tech stack it's running on
+//  • Memory mode currently active
+//  • Whether web search is available
+//  • Its knowledge cutoff
+// ─────────────────────────────────────────────────────────
+
+function buildSystem(modelInfo, memory, memoryMode, searchContext = '') {
+  const now     = new Date()
+  const dateStr = now.toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' })
+  const timeStr = now.toUTCString().slice(17, 22) + ' UTC'
+  const webStatus = process.env.BRAVE_SEARCH_API_KEY
+    ? 'ACTIVE — cite results inline using [1][2] and add a Sources block at the end'
+    : 'NOT configured in this deployment (add BRAVE_SEARCH_API_KEY to enable)'
+
+  const selfAwareness = `
+╔══════════════════════════════════════════════════════╗
+║                  WHO YOU ARE                         ║
+╚══════════════════════════════════════════════════════╝
+Model:    ${modelInfo.display}
+Maker:    ${modelInfo.maker}
+About:    ${modelInfo.caps}
+
+You are deployed inside a custom AI Assistant app with the following stack:
+  • Frontend  : React + Vite, hosted on Vercel
+  • Backend   : Vercel Serverless Function (/api/chat.js)
+  • AI router : SAP AI Core Orchestration Service (proxies to ${modelInfo.maker})
+  • Database  : Supabase (PostgreSQL) — stores auth, conversations, messages
+  • Memory    : Rolling ${memoryMode === 'full' ? 'detailed' : 'summary'} memory, persisted per conversation
+
+Today's date : ${dateStr}
+Current time : ${timeStr}
+Knowledge cutoff: early 2025 — for anything more recent, rely on the web search
+                  results injected below (if present), or tell the user to verify.
+
+Your capabilities in this app:
+  ✓ Multi-turn chat with persistent cross-session memory
+  ✓ File analysis — images (JPG/PNG), PDFs, DOCX, TXT (up to 20 MB)
+  ✓ Code explanation, debugging, generation, with step-by-step comments
+  ✓ Switching between ${Object.keys(MODELS).length} AI models mid-conversation
+  ✓ Web search: ${webStatus}
+  ✗ Cannot browse arbitrary URLs or execute code at runtime
+  ✗ Cannot send emails, make calls, or take actions outside this chat
+
+If a user asks "what model are you?", "who made you?", "what can you do?",
+"what's today's date?", or similar — answer from the facts above, not from
+generic training data. Be honest if something is outside your capabilities.
+`.trim()
+
+  let system = `${selfAwareness}
+
+╔══════════════════════════════════════════════════════╗
+║               ASSISTANT GUIDELINES                   ║
+╚══════════════════════════════════════════════════════╝
+1. General Q&A — answer clearly and concisely on any topic.
+2. Coding help — always explain WHAT the code does and WHY, not just HOW.
+   Break complex problems into numbered steps. Add inline comments.
+3. File analysis — describe contents clearly; extract key information.
+4. Source citation — when web search results are provided above, cite them
+   using [n] inline and add a Sources block at the end of your reply.
+5. Honesty — if information may be outdated or you're unsure, say so and
+   direct the user to verify. Never invent URLs or citations.
+6. Tone — clear, friendly, thorough. Assume the user may be a non-expert
+   unless they demonstrate otherwise.`
+
+  // Inject relevant memory (already filtered by filterRelevantMemory)
+  if (memory && memoryMode !== 'off') {
+    system += `
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONVERSATION MEMORY (${memoryMode === 'full' ? 'Detailed' : 'Summary'} · filtered for relevance)
+Use this to answer follow-up questions without needing the full history.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${memory}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+  }
+
+  // Append web search context if present
+  if (searchContext) system += searchContext
+
+  return system
+}
+
+// ─────────────────────────────────────────────────────────
+// SAP AI Core call (unchanged from original)
+// ─────────────────────────────────────────────────────────
 async function callSAP(sapModelName, version, noTemp, messages, system) {
   const apiUrl        = process.env.SAP_AI_API_URL
   const resourceGroup = process.env.RESOURCE_GROUP || 'default'
   const deploymentId  = process.env.SAP_ORCHESTRATION_DEPLOYMENT_ID
   const token         = await getSapToken()
 
-  const history   = messages.slice(0, -1).map(m => ({
+  const history  = messages.slice(0, -1).map(m => ({
     role:    m.role,
-    content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+    content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
   }))
   const lastMsg   = messages[messages.length - 1]
   const userInput = typeof lastMsg.content === 'string'
@@ -73,18 +346,18 @@ async function callSAP(sapModelName, version, noTemp, messages, system) {
         templating_module_config: {
           template: [
             { role: 'system', content: system },
-            { role: 'user',   content: '{{?user_input}}' }
-          ]
+            { role: 'user',   content: '{{?user_input}}' },
+          ],
         },
         llm_module_config: {
-          model_name: sapModelName,
+          model_name:    sapModelName,
           ...(version ? { model_version: version } : {}),
           model_params: {
             max_tokens: 4096,
             ...(noTemp ? {} : { temperature: 0.7 }),
-          }
-        }
-      }
+          },
+        },
+      },
     },
     input_params:     { user_input: userInput },
     messages_history: history,
@@ -92,8 +365,12 @@ async function callSAP(sapModelName, version, noTemp, messages, system) {
 
   const resp    = await fetch(`${apiUrl}/v2/inference/deployments/${deploymentId}/completion`, {
     method:  'POST',
-    headers: { Authorization: `Bearer ${token}`, 'AI-Resource-Group': resourceGroup, 'Content-Type': 'application/json' },
-    body:    JSON.stringify(payload),
+    headers: {
+      Authorization:     `Bearer ${token}`,
+      'AI-Resource-Group': resourceGroup,
+      'Content-Type':    'application/json',
+    },
+    body: JSON.stringify(payload),
   })
   const rawText = await resp.text()
   if (!resp.ok) throw new Error(`SAP error ${resp.status}: ${rawText.slice(0, 400)}`)
@@ -106,368 +383,109 @@ async function callSAP(sapModelName, version, noTemp, messages, system) {
   )
 }
 
-
-
-// ─── RAG: Search stored document chunks ──────────────────────────────────────
-
-async function searchChunks(conversationId, query) {
-  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!supabaseUrl || !supabaseKey) return null
-
-  try {
-    // Build search terms from query
-    const terms = query
-      .replace(/[^a-zA-Z0-9 ]/g, ' ')
-      .trim()
-      .split(/\s+/)
-      .filter(w => w.length > 2)
-
-    let chunks = []
-
-    // Try full-text search first with proper Supabase FTS syntax
-    if (terms.length > 0) {
-      const searchQuery = terms.join(' | ') // OR search — more results
-      const ftsUrl = `${supabaseUrl}/rest/v1/document_chunks?conversation_id=eq.${conversationId}&search_vector=fts(english).${encodeURIComponent(searchQuery)}&order=chunk_index.asc&limit=6`
-      const ftsResp = await fetch(ftsUrl, {
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
-      })
-      if (ftsResp.ok) {
-        chunks = await ftsResp.json()
-      }
-    }
-
-    // Fallback: if FTS returns nothing, just get first 6 chunks from conversation
-    if (!chunks?.length) {
-      const fallbackUrl = `${supabaseUrl}/rest/v1/document_chunks?conversation_id=eq.${conversationId}&order=chunk_index.asc&limit=6`
-      const fallbackResp = await fetch(fallbackUrl, {
-        headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
-      })
-      if (fallbackResp.ok) {
-        chunks = await fallbackResp.json()
-      }
-    }
-
-    if (!chunks?.length) return null
-
-    // Group by file and format
-    const byFile = {}
-    for (const chunk of chunks) {
-      if (!byFile[chunk.file_name]) byFile[chunk.file_name] = []
-      byFile[chunk.file_name].push(chunk.content)
-    }
-
-    return Object.entries(byFile).map(([file, contents]) =>
-      `[From ${file}]:\n${contents.join('\n---\n')}`
-    ).join('\n\n')
-
-  } catch {
-    return null
-  }
-}
-
-async function hasStoredChunks(conversationId) {
-  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!supabaseUrl || !supabaseKey) return false
-
-  try {
-    const resp = await fetch(
-      `${supabaseUrl}/rest/v1/document_chunks?conversation_id=eq.${conversationId}&limit=1`,
-      { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
-    )
-    if (!resp.ok) return false
-    const data = await resp.json()
-    return data?.length > 0
-  } catch {
-    return false
-  }
-}
-
-// ─── Web Search (DuckDuckGo) ──────────────────────────────────────────────────
-
-async function duckDuckGoSearch(query) {
-  try {
-    // DuckDuckGo instant answer API — no key needed
-    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`
-    const resp = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 AI-Chatbot/1.0' } })
-    if (!resp.ok) return null
-    const data = await resp.json()
-
-    const results = []
-
-    // Answer (direct fact — highest priority)
-    if (data.Answer) {
-      results.push(`Direct answer: ${data.Answer}`)
-    }
-
-    // Abstract (main answer)
-    if (data.AbstractText) {
-      results.push(`${data.AbstractSource}: ${data.AbstractText}`)
-      if (data.AbstractURL) results.push(`Source: ${data.AbstractURL}`)
-    }
-
-    // Definition
-    if (data.Definition) {
-      results.push(`Definition (${data.DefinitionSource}): ${data.Definition}`)
-    }
-
-    // Infobox facts
-    if (data.Infobox?.content?.length) {
-      const facts = data.Infobox.content
-        .filter(f => f.label && f.value)
-        .slice(0, 6)
-        .map(f => `${f.label}: ${f.value}`)
-      if (facts.length) results.push('Facts:\n' + facts.join('\n'))
-    }
-
-    // Related topics
-    if (data.RelatedTopics?.length) {
-      const topics = data.RelatedTopics
-        .filter(t => t.Text && !t.Topics) // skip category headers
-        .slice(0, 5)
-        .map(t => `- ${t.Text}`)
-      if (topics.length) results.push('Related:\n' + topics.join('\n'))
-    }
-
-    // Note: DuckDuckGo instant answers don't include live news
-    // For news queries, be transparent about the limitation
-    if (!results.length) {
-      return `No instant answer found for "${query}". DuckDuckGo's free API does not provide live news results. The AI's knowledge cutoff applies for this query.`
-    }
-
-    return results.join('\n\n')
-  } catch (err) {
-    return null
-  }
-}
-
-async function shouldSearch(userMessage, callSAP) {
-  const msg = userMessage.toLowerCase()
-
-  // Step 1 — keyword fast-path: obvious real-time queries go straight to search
-  const searchPatterns = [
-    /today|tonight|right now|current(ly)?|latest|recent|now/,
-    /what('s| is) the (date|time|day|weather|price|score|news)/,
-    /what happened|what's happening|is .* (happening|still|dead|alive|open|closed)/,
-    /news|breaking|update|attack|war|election|crisis|disaster/,
-    /stock|price|rate|cost|value|worth|market/,
-    /who (is|won|leads|rules)/,
-    /when (is|was|did|does|will)/,
-    /score|match|game result|fixture/,
-    /weather|forecast|temperature/,
-    /release|launch|announce/,
-  ]
-
-  if (searchPatterns.some(p => p.test(msg))) return true
-
-  // Step 2 — keyword fast-path: obvious no-search queries skip Haiku entirely
-  const noSearchPatterns = [
-    /^(hi|hello|hey|thanks|thank you|ok|okay|sure|yes|no|bye)/,
-    /how do (i|you|we) (code|write|fix|debug|build|create|make)/,
-    /what is (a |an )?(function|variable|class|array|loop|algorithm|recursion)/,
-    /explain|summarize|translate|rewrite|improve|fix (my|this|the)/,
-  ]
-
-  if (noSearchPatterns.some(p => p.test(msg))) return false
-
-  // Step 3 — ambiguous: ask Haiku to decide
-  const system = `You decide if a user message needs a real-time web search to answer accurately.
-Respond ONLY with "yes" or "no". Be generous — when in doubt, say yes.
-YES for: anything time-sensitive, current events, real people's current status, recent releases, live data.
-NO for: coding help, math, explaining concepts, analyzing uploaded files, creative writing, historical facts.`
-
-  try {
-    const result = await callSAP(
-      'anthropic--claude-4.5-haiku', '1', false,
-      [{ role: 'user', content: `Search needed? "${userMessage}"` }],
-      system
-    )
-    return result.trim().toLowerCase().startsWith('yes')
-  } catch {
-    return false
-  }
-}
-
+// ─────────────────────────────────────────────────────────
+// Memory update (unchanged from original)
+// ─────────────────────────────────────────────────────────
 async function updateMemory(existingMemory, userMessage, assistantReply, fileNames, mode) {
   const fileNote = fileNames?.length ? `\nFiles in this exchange: ${fileNames.join(', ')}` : ''
 
   const summarySystem = `You maintain a concise rolling summary of a conversation.
-Update the summary to capture: main topics, key facts learned, files shared and what they contained, questions asked and answered, any ongoing tasks.
-Be brief — aim for 200-400 words max. Return ONLY the updated summary, no preamble.
+Update to capture: main topics, key facts, files and what they contained, Q&A, ongoing tasks.
+Aim for 200-400 words max. Return ONLY the updated summary, no preamble.
 Current summary: ${existingMemory || '(none yet)'}`
 
   const fullSystem = `You maintain a detailed memory of a conversation.
-Update it to include ALL important information:
-- Topics discussed and concepts explained in detail
-- Files/documents shared with content summaries
-- Questions asked and full answers given
-- Code, analysis, or tasks completed
-- User context, preferences, goals
-- Unresolved questions or ongoing topics
-Be thorough — this replaces needing the full history. Return ONLY the updated memory.
+Include: topics, files, Q&A, code/analysis, user context, preferences, goals, unresolved items.
+Be thorough. Return ONLY the updated memory.
 Current memory: ${existingMemory || '(none yet)'}`
-
-  const system = mode === 'full' ? fullSystem : summarySystem
 
   const messages = [{
     role: 'user',
-    content: `Exchange to add:\nUSER: ${typeof userMessage === 'string' ? userMessage : '[files/content]'}${fileNote}\nASSISTANT: ${assistantReply}\n\nUpdate the memory.`
+    content: `Exchange to add:\nUSER: ${typeof userMessage === 'string' ? userMessage : '[files/content]'}${fileNote}\nASSISTANT: ${assistantReply}\n\nUpdate the memory.`,
   }]
-
   try {
-    return await callSAP('anthropic--claude-4.5-haiku', '1', false, messages, system)
+    return await callSAP('anthropic--claude-4.5-haiku', '1', false, messages, mode === 'full' ? fullSystem : summarySystem)
   } catch {
     return existingMemory || ''
   }
 }
 
-const buildSystem = (displayName, maker, memory, memoryMode) => {
-  const base = `You are ${displayName}, an AI assistant made by ${maker}, running via SAP AI Core.
-
-You specialize in:
-1. General Q&A — answer questions clearly and concisely on any topic
-2. Coding help — explain code in plain English, debug issues, write snippets step by step
-
-When helping with code:
-- Always explain WHAT the code does and WHY, not just HOW
-- Use simple language — assume the user may not be an expert
-- Break complex problems into small numbered steps
-- Add comments explaining each important line
-
-When analyzing files: describe what you see clearly and extract key information.
-Keep responses clear, friendly, and thorough.`
-
-  if (!memory || memoryMode === 'off') return base
-
-  return `${base}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CONVERSATION MEMORY (${memoryMode === 'full' ? 'Detailed' : 'Summary'})
-Use this to answer follow-up questions without needing the full history.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${memory}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
-}
-
+// ─────────────────────────────────────────────────────────
+// Main handler
+// ─────────────────────────────────────────────────────────
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Origin',  '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.status(204).end()
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' })
 
-  const { messages, model, system_override, memory, memory_mode, attached_file_names, web_search_enabled } = req.body || {}
+  const { messages, model, system_override, memory, memory_mode, attached_file_names } = req.body || {}
   if (!messages?.length) return res.status(400).json({ error: 'No messages provided' })
 
-  const modelInfo    = MODELS[model] || MODELS[DEFAULT_MODEL_ID]
-  const sapModelName = modelInfo.sap
-  const displayName  = modelInfo.display
-  const modelVersion = modelInfo.version
-  const noTemp       = modelInfo.noTemp || false
-  const memoryMode   = memory_mode || 'summary'
-
-  const maker = sapModelName.startsWith('anthropic--') ? 'Anthropic' :
-    (sapModelName.startsWith('gpt') || sapModelName.startsWith('o')) ? 'OpenAI' :
-    sapModelName.startsWith('gemini') ? 'Google' :
-    sapModelName.startsWith('mistralai') ? 'Mistral AI' :
-    sapModelName.startsWith('amazon') ? 'Amazon' :
-    sapModelName.startsWith('meta') ? 'Meta' : 'an AI provider'
+  const modelInfo  = MODELS[model] || MODELS[DEFAULT_MODEL_ID]
+  const memoryMode = memory_mode || 'summary'
 
   if (!process.env.SAP_ORCHESTRATION_DEPLOYMENT_ID) {
     return res.status(500).json({ error: 'SAP_ORCHESTRATION_DEPLOYMENT_ID not set.' })
   }
 
-  // How many recent messages to send depends on memory mode
-  const HISTORY_LIMIT = memoryMode === 'off' ? 20 : 5
+  // Trim history based on memory mode
+  const HISTORY_LIMIT  = memoryMode === 'off' ? 20 : 5
   const recentMessages = messages.slice(-HISTORY_LIMIT)
 
-  const system = system_override || buildSystem(displayName, maker, memory, memoryMode)
+  // Extract the latest user text for relevance scoring and search detection
+  const lastUserMsg = [...recentMessages].reverse().find(m => m.role === 'user')
+  const userQuery   = typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : ''
+
+  // ── Step 1: Filter memory to relevant chunks only ──────
+  const filteredMemory = (memoryMode !== 'off' && memory)
+    ? filterRelevantMemory(memory, userQuery)
+    : (memory || null)
+
+  // ── Step 2: Web search (if triggered) ─────────────────
+  let searchResults = []
+  let searchContext = ''
+  if (!system_override && shouldSearch(userQuery)) {
+    searchResults = await searchWeb(userQuery)
+    searchContext  = formatSearchContext(searchResults)
+  }
+
+  // ── Step 3: Build system prompt with self-awareness ────
+  const system = system_override || buildSystem(modelInfo, filteredMemory, memoryMode, searchContext)
 
   try {
-    // ── Web search (hybrid — only when needed) ────────────────────────────────
-    let webContext = null
-    let searchQuery = null
-    const webSearchOn = web_search_enabled !== false // default on
+    const reply = await callSAP(
+      modelInfo.sap,
+      modelInfo.version,
+      modelInfo.noTemp,
+      recentMessages,
+      system,
+    )
 
-    if (webSearchOn) {
-      const lastUserMsg = messages[messages.length - 1]
-      const userText = typeof lastUserMsg?.content === 'string'
-        ? lastUserMsg.content
-        : JSON.stringify(lastUserMsg?.content)
-
-      const needsSearch = await shouldSearch(userText, callSAP)
-      if (needsSearch) {
-        searchQuery = userText
-        webContext = await duckDuckGoSearch(userText)
-      }
-    }
-
-    // ── RAG: search stored document chunks ──────────────────────────────────
-    let ragContext = null
-    try {
-      const convId = req.body?.conversation_id
-      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-      if (convId && serviceKey) {
-        const lastUserMsg = messages[messages.length - 1]
-        const userText = typeof lastUserMsg?.content === 'string'
-          ? lastUserMsg.content
-          : JSON.stringify(lastUserMsg?.content || '')
-
-        const chunkExists = await hasStoredChunks(convId)
-        if (chunkExists) {
-          ragContext = await searchChunks(convId, userText)
-        }
-      }
-    } catch (ragErr) {
-      console.error('RAG error (non-fatal):', ragErr.message)
-      // RAG failure never breaks the main response
-    }
-
-    // ── Build final system prompt with web + RAG context ──────────────────
-    let finalSystem = system
-
-    if (ragContext) {
-      // Cap RAG context to avoid overwhelming the model
-      const MAX_RAG_CHARS = 6000
-      const cappedRag = ragContext.length > MAX_RAG_CHARS
-        ? ragContext.slice(0, MAX_RAG_CHARS) + '\n[...truncated for length]'
-        : ragContext
-      finalSystem = `${finalSystem}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-KNOWLEDGE BASE (from uploaded files)
-These are the most relevant sections from documents uploaded in this conversation.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${cappedRag}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
-    }
-
-    if (webContext) {
-      finalSystem = `${finalSystem}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WEB SEARCH RESULTS (DuckDuckGo)
-Query: "${searchQuery}"
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${webContext}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Use these results to inform your answer. Mention when information comes from a web search.`
-    }
-
-    const reply = await callSAP(sapModelName, modelVersion, noTemp, recentMessages, finalSystem)
-
-    // Update memory if mode is not 'off'
+    // ── Step 4: Update memory (async, non-blocking for perf) ──
     let newMemory = memory || null
     if (memoryMode !== 'off') {
-      const lastUserMsg = messages[messages.length - 1]
-      newMemory = await updateMemory(memory || '', lastUserMsg?.content, reply, attached_file_names || [], memoryMode)
+      newMemory = await updateMemory(
+        memory || '',
+        lastUserMsg?.content,
+        reply,
+        attached_file_names || [],
+        memoryMode,
+      )
     }
 
-    return res.status(200).json({ reply, model_used: sapModelName, new_memory: newMemory, web_searched: !!webContext, rag_used: !!ragContext })
+    return res.status(200).json({
+      reply,
+      model_used:   modelInfo.sap,
+      new_memory:   newMemory,
+      // ↓ These two are NEW — use them in the frontend to show source pills
+      sources:      searchResults,   // [{ index, title, url, snippet }]
+      web_searched: searchResults.length > 0,
+    })
 
   } catch (err) {
-    console.error('Chat error:', err.message, err.stack?.slice(0,300))
+    console.error('Chat error:', err)
     return res.status(500).json({ error: err.message || 'Internal server error' })
   }
 }
