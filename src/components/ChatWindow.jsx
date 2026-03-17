@@ -129,7 +129,7 @@ const InputBar = memo(function InputBar({ onSend, disabled }) {
   }
 
   return (
-    <div style={{ padding:'10px 16px 20px', flexShrink:0 }}>
+    <div style={{ padding:'8px 10px 16px', flexShrink:0 }}>
       {pendingFiles.filter(Boolean).length > 0 && (
         <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8, maxWidth:780, margin:'0 auto 8px' }}>
           {pendingFiles.filter(Boolean).map((f,i)=>(
@@ -141,7 +141,7 @@ const InputBar = memo(function InputBar({ onSend, disabled }) {
           ))}
         </div>
       )}
-      <div style={{ maxWidth:780, margin:'0 auto', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:16, padding:'10px 10px 10px 14px', display:'flex', alignItems:'flex-end', gap:8, transition:'border-color .2s, box-shadow .2s' }}
+      <div style={{ maxWidth:780, margin:'0 auto', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, padding:'8px 8px 8px 12px', display:'flex', alignItems:'flex-end', gap:6, transition:'border-color .2s, box-shadow .2s' }}
         onFocusCapture={e=>{e.currentTarget.style.borderColor='var(--accent)';e.currentTarget.style.boxShadow='0 0 0 3px var(--accent-glow)'}}
         onBlurCapture={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.boxShadow='none'}}>
         <button onClick={()=>fileInputRef.current?.click()} title="Attach file"
@@ -161,7 +161,7 @@ const InputBar = memo(function InputBar({ onSend, disabled }) {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
       </div>
-      <div style={{ textAlign:'center', fontSize:11.5, color:'var(--text3)', marginTop:8 }}>Supports JPG, PNG, PDF, DOCX, TXT · AI can make mistakes</div>
+      <div style={{ textAlign:'center', fontSize:11, color:'var(--text3)', marginTop:6 }}>JPG · PNG · PDF · DOCX · TXT · AI can make mistakes</div>
     </div>
   )
 })
@@ -286,13 +286,13 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     <div style={{ flex:1, display:'flex', flexDirection:'column', height:'100vh', background:'var(--main-bg)', overflow:'hidden' }}>
 
       {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 20px', borderBottom:'1px solid var(--border)', background:'rgba(17,19,24,0.9)', backdropFilter:'blur(12px)', flexShrink:0, zIndex:10 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'12px 16px', borderBottom:'1px solid var(--border)', background:'rgba(17,19,24,0.9)', backdropFilter:'blur(12px)', flexShrink:0, zIndex:10, flexWrap:'wrap', minHeight:56 }}>
         <button onClick={onToggleSidebar} style={{ background:'none', border:'none', color:'var(--text2)', padding:6, borderRadius:8, display:'flex', transition:'color .15s' }}
           onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--text2)'}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
 
-        <div style={{ flex:1, fontSize:14, fontWeight:500, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+        <div style={{ flex:1, fontSize:14, fontWeight:500, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', minWidth:0 }}>
           {conversation?.title || 'AI Assistant'}
         </div>
 
@@ -309,16 +309,16 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
             <span style={{ fontSize:13 }}>
               {memoryMode === 'off' ? '🧠' : memoryMode === 'summary' ? '📝' : '💡'}
             </span>
-            <span style={{ color:'var(--text2)', fontSize:11.5 }}>
+            <span style={{ color:'var(--text2)', fontSize:11.5, display:'var(--label-display, inline)' }} className="memory-label">
               {memoryMode === 'off' ? 'No Memory' : memoryMode === 'summary' ? 'Summary' : 'Full Memory'}
             </span>
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color:'var(--text2)' }}><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           {memoryOpen && (
             <div style={{
-              position:'fixed', right:8, top:'auto',
+              position:'fixed', right:8, top:64,
               background:'var(--surface)', border:'1px solid var(--border)',
-              borderRadius:12, padding:6, minWidth:220, zIndex:1000,
+              borderRadius:12, padding:6, minWidth:220, maxWidth:'calc(100vw - 16px)', zIndex:1000,
               boxShadow:'0 8px 30px rgba(0,0,0,0.4)',
             }}>
               {[
@@ -354,14 +354,14 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
 
         {/* Model selector */}
         <div style={{ position:'relative' }} onClick={e=>e.stopPropagation()}>
-          <button onClick={()=>setModelOpen(o=>!o)} style={{ display:'flex', alignItems:'center', gap:7, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:9, padding:'6px 10px', color:'var(--text)', fontSize:13, fontWeight:500, transition:'border-color .15s' }}
+          <button onClick={()=>setModelOpen(o=>!o)} style={{ display:'flex', alignItems:'center', gap:6, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:9, padding:'6px 10px', color:'var(--text)', fontSize:13, fontWeight:500, transition:'border-color .15s', whiteSpace:'nowrap' }}
             onMouseEnter={e=>e.currentTarget.style.borderColor='var(--accent)'} onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border)'}>
             <span style={{ width:7, height:7, borderRadius:'50%', background:activeModel.color, flexShrink:0 }}/>
-            {activeModel.label}
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color:'var(--text2)' }}><polyline points="6 9 12 15 18 9"/></svg>
+            <span className="model-label-text">{activeModel.label}</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color:'var(--text2)', flexShrink:0 }}><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           {modelOpen && (
-            <div style={{ position:'fixed', right:8, top:'auto', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:6, minWidth:240, maxWidth:'calc(100vw - 16px)', zIndex:1000, boxShadow:'0 8px 30px rgba(0,0,0,0.5)', maxHeight:'70vh', overflowY:'auto' }}>
+            <div style={{ position:'fixed', right:8, top:64, background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:6, minWidth:220, maxWidth:'calc(100vw - 16px)', zIndex:1000, boxShadow:'0 8px 30px rgba(0,0,0,0.5)', maxHeight:'70vh', overflowY:'auto' }}>
               {(() => {
                 const groups = [...new Set(MODELS.map(m => m.group))]
                 return groups.map(group => (
@@ -405,7 +405,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
         )}
         {messages.map((msg,i) => <MessageBubble key={msg.id||i} message={msg} />)}
         {loading && (
-          <div style={{ display:'flex', gap:10, padding:'8px 0', maxWidth:780, margin:'0 auto', width:'100%' }}>
+          <div style={{ display:'flex', gap:10, padding:'8px 0', maxWidth:780, margin:'0 auto', width:'100%', padding:'0 4px' }}>
             <div style={{ width:30, height:30, borderRadius:8, flexShrink:0, background:'linear-gradient(135deg,var(--accent),var(--accent2))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 }}>✦</div>
             <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, borderTopLeftRadius:4, padding:'12px 16px', display:'flex', gap:5, alignItems:'center' }}>
               {[0,0.2,0.4].map((d,i)=><span key={i} style={{ width:7, height:7, borderRadius:'50%', background:'var(--accent)', animation:`bounce 1.2s ${d}s infinite`, display:'inline-block' }}/>)}
