@@ -107,6 +107,72 @@ async function callSAP(sapModelName, version, noTemp, messages, system) {
 }
 
 
+
+// ─── RAG: Search stored document chunks ──────────────────────────────────────
+
+async function searchChunks(conversationId, query) {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !supabaseKey) return null
+
+  try {
+    // Use PostgreSQL full-text search
+    const searchQuery = query
+      .replace(/[^a-zA-Z0-9 ]/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(w => w.length > 2)
+      .join(' & ')
+
+    if (!searchQuery) return null
+
+    const url = `${supabaseUrl}/rest/v1/document_chunks?conversation_id=eq.${conversationId}&search_vector=fts.${encodeURIComponent(searchQuery)}&order=chunk_index.asc&limit=6`
+    const resp = await fetch(url, {
+      headers: {
+        'apikey':        supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+      }
+    })
+
+    if (!resp.ok) return null
+    const chunks = await resp.json()
+    if (!chunks?.length) return null
+
+    // Group by file and format
+    const byFile = {}
+    for (const chunk of chunks) {
+      if (!byFile[chunk.file_name]) byFile[chunk.file_name] = []
+      byFile[chunk.file_name].push(chunk.content)
+    }
+
+    const formatted = Object.entries(byFile).map(([file, contents]) =>
+      `[From ${file}]:\n${contents.join('\n---\n')}`
+    ).join('\n\n')
+
+    return formatted
+  } catch {
+    return null
+  }
+}
+
+async function hasStoredChunks(conversationId) {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !supabaseKey) return false
+
+  try {
+    const resp = await fetch(
+      `${supabaseUrl}/rest/v1/document_chunks?conversation_id=eq.${conversationId}&limit=1`,
+      { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
+    )
+    if (!resp.ok) return false
+    const data = await resp.json()
+    return data?.length > 0
+  } catch {
+    return false
+  }
+}
+
 // ─── Web Search (DuckDuckGo) ──────────────────────────────────────────────────
 
 async function duckDuckGoSearch(query) {
@@ -326,10 +392,37 @@ export default async function handler(req, res) {
       }
     }
 
-    // Inject web results into system prompt if available
+    // ── RAG: search stored document chunks ──────────────────────────────────
+    let ragContext = null
+    const convId = req.body?.conversation_id
+    if (convId) {
+      const lastUserMsg = messages[messages.length - 1]
+      const userText = typeof lastUserMsg?.content === 'string'
+        ? lastUserMsg.content
+        : JSON.stringify(lastUserMsg?.content || '')
+
+      const chunkExists = await hasStoredChunks(convId)
+      if (chunkExists) {
+        ragContext = await searchChunks(convId, userText)
+      }
+    }
+
+    // ── Build final system prompt with web + RAG context ──────────────────
     let finalSystem = system
+
+    if (ragContext) {
+      finalSystem = `${finalSystem}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KNOWLEDGE BASE (from uploaded files)
+These are the most relevant sections from documents uploaded in this conversation.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${ragContext}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+    }
+
     if (webContext) {
-      finalSystem = `${system}
+      finalSystem = `${finalSystem}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 WEB SEARCH RESULTS (DuckDuckGo)
@@ -349,7 +442,7 @@ Use these results to inform your answer. Mention when information comes from a w
       newMemory = await updateMemory(memory || '', lastUserMsg?.content, reply, attached_file_names || [], memoryMode)
     }
 
-    return res.status(200).json({ reply, model_used: sapModelName, new_memory: newMemory, web_searched: !!webContext })
+    return res.status(200).json({ reply, model_used: sapModelName, new_memory: newMemory, web_searched: !!webContext, rag_used: !!ragContext })
 
   } catch (err) {
     console.error('Chat error:', err)
