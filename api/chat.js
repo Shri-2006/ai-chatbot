@@ -158,13 +158,8 @@ async function searchChunks(conversationId, query) {
     }
 
     return Object.entries(byFile).map(([file, contents]) =>
-      `[From ${file}]:
-${contents.join('
----
-')}`
-    ).join('
-
-')
+      `[From ${file}]:\n${contents.join('\n---\n')}`
+    ).join('\n\n')
 
   } catch {
     return null
