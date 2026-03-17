@@ -1,11 +1,14 @@
-#Website to deployment as of March 15, 2026:
-https://ai-chatbot-eight-pi-10.vercel.app/
+Live Demo: https://ai-chatbot-eight-pi-10.vercel.app/
+A full stack AI chatbot similar to chatgpt.com or claude.ai or gemini.google.com, built using SAP AI Core with support for multiple models, persistent memory, and RAG. 
 
-#Details
--multiple models from SAP AI Core -Gemini,Claude, GPT, Mistral
+#Features
+-multiple models from SAP AI Core -Gemini,Claude, GPT
 -Keeps chat history and syncs across many devices
 -Multi user autheentication, sign up and login with email
 -File attachments-JPG,PNG,PDF,DOCX,TXT,ODT supported
+
+How it works: 
+User sends message through React frontend on Vercel, Message gets stored in Supabase, frontend calls the backend which authenticates and sends request to SAP AI Core to the model selected. Response gets returned and stored in Supabase, and given to frontend.
 
 #System Architecture:
 User-> Vercel (REACT and Vite frontend hoster, and holds function for SAP token, AI API key, and returns response)-> Auth of User, Chat history to Supabase, then API AI requests to SAP AI core)
@@ -29,13 +32,17 @@ SAP_ORCHESTRATION_DEPLOYMENT_ID
 Run the schema.sql in your Supabase SQL editor to set up the tables.
  
 ## Deployment
-
 Frontend and API are both deployed on Vercel. Connect the GitHub repo to Vercel and add the env variables in the project settings before deploying.
 
+Components:
+Frontend: React and Vite
+Backend: Vercel (Serveless)
+Database: Supabase
+AI Provider: SAP AI Core
+Models : Claude, GPT and Gemini are supported
 
 
-
-AI generated Info:
+AI generated Diagrams:
 
 ## System Architecture
 
@@ -78,32 +85,7 @@ AI generated Info:
 └─────────────────────┘  └─────────────────────────────────┘
 ```
 
-### How a message flows through the system
 
-1. User types a message and hits send
-2. React frontend saves the user message to Supabase
-3. Frontend calls `/api/chat` (Vercel serverless function) with the message history
-4. Serverless function authenticates with SAP using OAuth2 client credentials
-5. Function sends the conversation to SAP AI Core Orchestration Service
-6. SAP routes the request to the selected Claude model
-7. Claude's response comes back through SAP → Vercel → frontend
-8. Frontend saves the assistant response to Supabase and displays it
-9. Next time the user opens the app on any device, full history loads from Supabase
-
----
-
-## Tech Stack
-
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| Frontend | React + Vite | Chat UI, model selector, file handling |
-| Hosting | Vercel (free) | Permanent URL, auto-deploys from GitHub |
-| Backend | Vercel Serverless Function | Proxy between frontend and SAP AI Core |
-| Auth + DB | Supabase (free) | User accounts, conversation history |
-| AI | SAP AI Core Orchestration | Routes requests to Claude models |
-| Models | Anthropic Claude (via SAP) | The actual AI responses |
-
----
 
 ## Project Structure
 
