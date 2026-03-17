@@ -106,6 +106,75 @@ async function callSAP(sapModelName, version, noTemp, messages, system) {
   )
 }
 
+
+// ─── Web Search (DuckDuckGo) ──────────────────────────────────────────────────
+
+async function duckDuckGoSearch(query) {
+  try {
+    // DuckDuckGo instant answer API — no key needed
+    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`
+    const resp = await fetch(url, { headers: { 'User-Agent': 'AI-Chatbot/1.0' } })
+    if (!resp.ok) return null
+    const data = await resp.json()
+
+    const results = []
+
+    // Abstract (main answer)
+    if (data.AbstractText) {
+      results.push(`**${data.AbstractSource}**: ${data.AbstractText}`)
+    }
+
+    // Answer (direct fact)
+    if (data.Answer) {
+      results.push(`**Direct answer**: ${data.Answer}`)
+    }
+
+    // Related topics
+    if (data.RelatedTopics?.length) {
+      const topics = data.RelatedTopics
+        .filter(t => t.Text)
+        .slice(0, 4)
+        .map(t => `- ${t.Text}`)
+      if (topics.length) results.push(`**Related:**\n${topics.join('\n')}`)
+    }
+
+    // Infobox
+    if (data.Infobox?.content?.length) {
+      const facts = data.Infobox.content
+        .filter(f => f.label && f.value)
+        .slice(0, 5)
+        .map(f => `- ${f.label}: ${f.value}`)
+      if (facts.length) results.push(`**Facts:**\n${facts.join('\n')}`)
+    }
+
+    if (!results.length) return null
+    return results.join('\n\n')
+  } catch {
+    return null
+  }
+}
+
+async function shouldSearch(userMessage, callSAP) {
+  // Use Haiku to quickly decide if a web search would help
+  const system = `You decide if a user message requires a real-time web search to answer accurately.
+Respond with ONLY "yes" or "no".
+Search is needed for: current events, news, prices, sports scores, weather, recent releases, 
+"what is X trading at", "latest news on X", "who won X", "is X still Y", anything time-sensitive.
+Search is NOT needed for: coding help, math, explanations of concepts, file analysis, 
+historical facts, general knowledge that doesn't change, personal questions.`
+
+  try {
+    const result = await callSAP(
+      'anthropic--claude-4.5-haiku', '1', false,
+      [{ role: 'user', content: `Does this message need a web search? "${userMessage}"` }],
+      system
+    )
+    return result.trim().toLowerCase().startsWith('yes')
+  } catch {
+    return false
+  }
+}
+
 async function updateMemory(existingMemory, userMessage, assistantReply, fileNames, mode) {
   const fileNote = fileNames?.length ? `\nFiles in this exchange: ${fileNames.join(', ')}` : ''
 
@@ -174,7 +243,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end()
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' })
 
-  const { messages, model, system_override, memory, memory_mode, attached_file_names } = req.body || {}
+  const { messages, model, system_override, memory, memory_mode, attached_file_names, web_search_enabled } = req.body || {}
   if (!messages?.length) return res.status(400).json({ error: 'No messages provided' })
 
   const modelInfo    = MODELS[model] || MODELS[DEFAULT_MODEL_ID]
@@ -202,7 +271,39 @@ export default async function handler(req, res) {
   const system = system_override || buildSystem(displayName, maker, memory, memoryMode)
 
   try {
-    const reply = await callSAP(sapModelName, modelVersion, noTemp, recentMessages, system)
+    // ── Web search (hybrid — only when needed) ────────────────────────────────
+    let webContext = null
+    let searchQuery = null
+    const webSearchOn = web_search_enabled !== false // default on
+
+    if (webSearchOn) {
+      const lastUserMsg = messages[messages.length - 1]
+      const userText = typeof lastUserMsg?.content === 'string'
+        ? lastUserMsg.content
+        : JSON.stringify(lastUserMsg?.content)
+
+      const needsSearch = await shouldSearch(userText, callSAP)
+      if (needsSearch) {
+        searchQuery = userText
+        webContext = await duckDuckGoSearch(userText)
+      }
+    }
+
+    // Inject web results into system prompt if available
+    let finalSystem = system
+    if (webContext) {
+      finalSystem = `${system}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WEB SEARCH RESULTS (DuckDuckGo)
+Query: "${searchQuery}"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${webContext}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Use these results to inform your answer. Mention when information comes from a web search.`
+    }
+
+    const reply = await callSAP(sapModelName, modelVersion, noTemp, recentMessages, finalSystem)
 
     // Update memory if mode is not 'off'
     let newMemory = memory || null
@@ -211,7 +312,7 @@ export default async function handler(req, res) {
       newMemory = await updateMemory(memory || '', lastUserMsg?.content, reply, attached_file_names || [], memoryMode)
     }
 
-    return res.status(200).json({ reply, model_used: sapModelName, new_memory: newMemory })
+    return res.status(200).json({ reply, model_used: sapModelName, new_memory: newMemory, web_searched: !!webContext })
 
   } catch (err) {
     console.error('Chat error:', err)
