@@ -174,6 +174,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
   const [modelOpen, setModelOpen] = useState(false)
   const [memoryMode, setMemoryMode] = useState('summary')
   const [memoryOpen, setMemoryOpen] = useState(false)
+  const [webSearch, setWebSearch] = useState(true)
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -249,6 +250,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
           memory:              currentMemory,
           memory_mode:         memoryMode,
           attached_file_names: files.map(f => f.name),
+          web_search_enabled:  webSearch,
         })
       })
 
@@ -262,8 +264,11 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
       }
 
       const reply = data.reply || data.error || 'Something went wrong.'
+      const webSearched = data.web_searched || false
       const { data:saved } = await supabase.from('messages').insert({ conversation_id:convId, role:'assistant', content:reply, file_refs:[] }).select().single()
-      setMessages(prev => [...prev, saved || { id:Date.now(), role:'assistant', content:reply, file_refs:[] }])
+      const msgToAdd = saved || { id:Date.now(), role:'assistant', content:reply, file_refs:[] }
+      if (webSearched) msgToAdd.web_searched = true
+      setMessages(prev => [...prev, msgToAdd])
 
       // Save updated memory back to Supabase
       if (data.new_memory && memoryMode !== 'off' && convId) {
@@ -295,6 +300,20 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
         <div style={{ flex:1, fontSize:14, fontWeight:500, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', minWidth:0 }}>
           {conversation?.title || 'AI Assistant'}
         </div>
+
+        {/* Web search toggle */}
+        <button onClick={()=>setWebSearch(o=>!o)} title={webSearch ? 'Web search on' : 'Web search off'} style={{
+          display:'flex', alignItems:'center', gap:5,
+          background:'var(--surface)', border:`1px solid ${webSearch ? 'var(--accent)' : 'var(--border)'}`,
+          borderRadius:9, padding:'6px 10px', fontSize:12, fontWeight:500,
+          color: webSearch ? 'var(--accent)' : 'var(--text2)',
+          transition:'all .15s',
+        }}
+          onMouseEnter={e=>e.currentTarget.style.borderColor='var(--accent)'}
+          onMouseLeave={e=>e.currentTarget.style.borderColor=webSearch?'var(--accent)':'var(--border)'}>
+          🌐
+          <span className="memory-label-text">{webSearch ? 'Search On' : 'Search Off'}</span>
+        </button>
 
         {/* Memory mode toggle */}
         <div style={{ position:'relative' }} onClick={e=>e.stopPropagation()}>
@@ -405,7 +424,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
         )}
         {messages.map((msg,i) => <MessageBubble key={msg.id||i} message={msg} />)}
         {loading && (
-          <div style={{ display:'flex', gap:10, padding:'8px 0', maxWidth:780, margin:'0 auto', width:'100%' }}>
+          <div style={{ display:'flex', gap:10, padding:'8px 0', maxWidth:780, margin:'0 auto', width:'100%', padding:'0 4px' }}>
             <div style={{ width:30, height:30, borderRadius:8, flexShrink:0, background:'linear-gradient(135deg,var(--accent),var(--accent2))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 }}>✦</div>
             <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, borderTopLeftRadius:4, padding:'12px 16px', display:'flex', gap:5, alignItems:'center' }}>
               {[0,0.2,0.4].map((d,i)=><span key={i} style={{ width:7, height:7, borderRadius:'50%', background:'var(--accent)', animation:`bounce 1.2s ${d}s infinite`, display:'inline-block' }}/>)}
