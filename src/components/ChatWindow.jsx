@@ -233,6 +233,28 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     })
     apiMessages.push({ role:'user', content: files.length>0 ? [...files.map(f=>f.contentBlock), ...(text?[{type:'text',text}]:[])] : text })
 
+    // ── RAG: ingest text-based files into knowledge base ──────────────────
+    const textFiles = files.filter(f => f.fileType !== 'image')
+    console.log('RAG ingest check — textFiles:', textFiles.length, 'convId:', convId, 'userId:', session?.user?.id)
+    if (textFiles.length > 0 && convId && session?.user?.id) {
+      fetch('/api/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversation_id: convId,
+          user_id: session.user.id,
+          files: textFiles.map(f => ({
+            name: f.name,
+            text: f.contentBlock?.text || '',
+          }))
+        })
+      }).then(async r => {
+        const d = await r.json()
+        if (!r.ok || !d.success) console.error('Ingest failed:', d)
+        else console.log('Ingest success:', d.chunks_stored, 'chunks stored for', textFiles.map(f=>f.name))
+      }).catch(err => console.error('Ingest fetch error:', err))
+    }
+
     try {
       // Fetch current memory from Supabase
       let currentMemory = null
