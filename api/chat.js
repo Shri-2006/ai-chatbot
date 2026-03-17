@@ -433,13 +433,18 @@ export default async function handler(req, res) {
     let finalSystem = system
 
     if (ragContext) {
+      // Cap RAG context to avoid overwhelming the model
+      const MAX_RAG_CHARS = 6000
+      const cappedRag = ragContext.length > MAX_RAG_CHARS
+        ? ragContext.slice(0, MAX_RAG_CHARS) + '\n[...truncated for length]'
+        : ragContext
       finalSystem = `${finalSystem}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 KNOWLEDGE BASE (from uploaded files)
 These are the most relevant sections from documents uploaded in this conversation.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${ragContext}
+${cappedRag}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
     }
 
@@ -467,7 +472,7 @@ Use these results to inform your answer. Mention when information comes from a w
     return res.status(200).json({ reply, model_used: sapModelName, new_memory: newMemory, web_searched: !!webContext, rag_used: !!ragContext })
 
   } catch (err) {
-    console.error('Chat error:', err)
+    console.error('Chat error:', err.message, err.stack?.slice(0,300))
     return res.status(500).json({ error: err.message || 'Internal server error' })
   }
 }
