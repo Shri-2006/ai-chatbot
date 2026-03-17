@@ -251,6 +251,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
           memory_mode:         memoryMode,
           attached_file_names: files.map(f => f.name),
           web_search_enabled:  webSearch,
+          conversation_id:     convId,
         })
       })
 
@@ -265,9 +266,11 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
 
       const reply = data.reply || data.error || 'Something went wrong.'
       const webSearched = data.web_searched || false
+      const ragUsed = data.rag_used || false
       const { data:saved } = await supabase.from('messages').insert({ conversation_id:convId, role:'assistant', content:reply, file_refs:[] }).select().single()
       const msgToAdd = saved || { id:Date.now(), role:'assistant', content:reply, file_refs:[] }
       if (webSearched) msgToAdd.web_searched = true
+      if (ragUsed) msgToAdd.rag_used = true
       setMessages(prev => [...prev, msgToAdd])
 
       // Save updated memory back to Supabase
