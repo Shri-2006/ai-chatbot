@@ -93,8 +93,6 @@ export default function Sidebar({ open, conversations, activeId, profile, sessio
           </div>
         </div>
       </div>
-    </div>
-
       {accountOpen && <AccountModal profile={profile} session={session} onClose={() => setAccountOpen(false)} />}
     </div>
   )
