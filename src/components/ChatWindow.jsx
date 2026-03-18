@@ -14,7 +14,12 @@ const MODELS = [
   { id:'claude-45-opus',        label:'Opus 4.5',            desc:'Most powerful',            color:'#c084fc', group:'Claude 4.5'   },
   // Claude 3.x — deprecated
   //{ id:'claude-37-sonnet',     label:'Sonnet 3.7',          desc:'Extended thinking',        color:'#f59e0b', group:'Claude 3' },
-  // OpenAI
+  // OpenAI — o-series reasoning
+  { id:'o1',                   label:'o1',                  desc:'Advanced reasoning',       color:'#0ea5e9', group:'OpenAI'   },
+  { id:'o3',                   label:'o3',                  desc:'Most powerful reasoning',  color:'#38bdf8', group:'OpenAI'   },
+  { id:'o3-mini',              label:'o3 Mini',             desc:'Efficient reasoning',      color:'#7dd3fc', group:'OpenAI'   },
+  { id:'o4-mini',              label:'o4 Mini',             desc:'Latest reasoning',         color:'#bae6fd', group:'OpenAI'   },
+  // OpenAI — GPT
   { id:'gpt-5',                label:'GPT-5',               desc:'Latest OpenAI',            color:'#10b981', group:'OpenAI'   },
   { id:'gpt-5-mini',           label:'GPT-5 Mini',          desc:'Fast GPT-5',               color:'#34d399', group:'OpenAI'   },
   { id:'gpt-4o',               label:'GPT-4o',              desc:'Multimodal',               color:'#6ee7b7', group:'OpenAI'   },
@@ -289,9 +294,10 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
       const reply = data.reply || data.error || 'Something went wrong.'
       const webSearched = data.web_searched || false
       const ragUsed = data.rag_used || false
+      const webSource = data.web_source || null
       const { data:saved } = await supabase.from('messages').insert({ conversation_id:convId, role:'assistant', content:reply, file_refs:[] }).select().single()
       const msgToAdd = saved || { id:Date.now(), role:'assistant', content:reply, file_refs:[] }
-      if (webSearched) msgToAdd.web_searched = true
+      if (webSearched) { msgToAdd.web_searched = true; msgToAdd.web_source = webSource }
       if (ragUsed) msgToAdd.rag_used = true
       setMessages(prev => [...prev, msgToAdd])
 

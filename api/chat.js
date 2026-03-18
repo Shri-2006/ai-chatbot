@@ -37,6 +37,10 @@ const MODELS = {
   'claude-45-opus':       { sap: 'anthropic--claude-4.5-opus',         display: 'Claude Opus 4.5',       version: '1'  },
   // Claude 3.x — deprecated
   //'claude-37-sonnet':   { sap: 'anthropic--claude-3.7-sonnet',       display: 'Claude Sonnet 3.7',     version: '1'  },
+  'o1':                   { sap: 'o1',                                 display: 'o1',                    version: null, noTemp: true },
+  'o3':                   { sap: 'o3',                                 display: 'o3',                    version: null, noTemp: true },
+  'o3-mini':              { sap: 'o3-mini',                            display: 'o3 Mini',               version: null, noTemp: true },
+  'o4-mini':              { sap: 'o4-mini',                            display: 'o4 Mini',               version: null, noTemp: true },
   'gpt-5':                { sap: 'gpt-5',                              display: 'GPT-5',                 version: null, noTemp: true },
   'gpt-5-mini':           { sap: 'gpt-5-mini',                        display: 'GPT-5 Mini',            version: null, noTemp: true },
   'gpt-4o':               { sap: 'gpt-4o',                            display: 'GPT-4o',                version: null },
