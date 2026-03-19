@@ -532,4 +532,4 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
       <InputBar onSend={sendMessage} disabled={loading} />
     </div>
   )
-}
+} 
