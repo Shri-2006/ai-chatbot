@@ -113,16 +113,9 @@ async function processFile(file) {
     const text = await file.text()
     return { name:file.name, icon, fileType:'csv', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${text.trim()}` } }
   }
-  // XLSX — use SheetJS from package
-  if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.name.endsWith('.xlsx')) {
-    const XLSX = await import('xlsx')
-    const data = await file.arrayBuffer()
-    const wb = XLSX.read(data, { type: 'array' })
-    const sheets = wb.SheetNames.map(name => {
-      const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name])
-      return `[Sheet: ${name}]\n${csv}`
-    }).join('\n\n')
-    return { name:file.name, icon, fileType:'xlsx', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${sheets.trim()}` } }
+  
+  if (file.name.endsWith('.xlsx')) {
+    throw new Error('XLSX not supported. Convert to CSV first.')
   }
   // PPTX — not supported without jszip package
   if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || file.name.endsWith('.pptx')) {
