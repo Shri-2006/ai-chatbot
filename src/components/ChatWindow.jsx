@@ -124,17 +124,9 @@ async function processFile(file) {
     }).join('\n\n')
     return { name:file.name, icon, fileType:'xlsx', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${sheets.trim()}` } }
   }
-  // PPTX — extract slide text using JSZip
+  // PPTX — not supported without jszip package
   if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || file.name.endsWith('.pptx')) {
-    const JSZip = (await import('jszip')).default
-    const zip = await JSZip.loadAsync(await file.arrayBuffer())
-    const slideFiles = Object.keys(zip.files).filter(f => /ppt\/slides\/slide[0-9]+\.xml$/.test(f)).sort()
-    const slides = await Promise.all(slideFiles.map(async (sf, i) => {
-      const xml = await zip.files[sf].async('string')
-      const text = xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-      return `[Slide ${i+1}]\n${text}`
-    }))
-    return { name:file.name, icon, fileType:'pptx', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${slides.join('\n\n').trim()}` } }
+    throw new Error('PPTX files are not currently supported. Please convert to PDF or TXT first.')
   }
   if (file.type === 'text/plain' || file.type === 'text/markdown' || file.type === 'text/html' ||
       file.type === 'text/csv' || file.type.startsWith('text/')) {
@@ -563,7 +555,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
         )}
         {messages.map((msg,i) => <MessageBubble key={msg.id||i} message={msg} />)}
         {loading && (
-          <div style={{ display:'flex', gap:10, padding:'8px 0', maxWidth:780, margin:'0 auto', width:'100%', padding:'0 4px' }}>
+          <div style={{ display:'flex', gap:10, maxWidth:780, margin:'0 auto', width:'100%', padding:'0 4px' }}>
             <div style={{ width:30, height:30, borderRadius:8, flexShrink:0, background:'linear-gradient(135deg,var(--accent),var(--accent2))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14 }}>✦</div>
             <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:14, borderTopLeftRadius:4, padding:'12px 16px', display:'flex', gap:5, alignItems:'center' }}>
               {[0,0.2,0.4].map((d,i)=><span key={i} style={{ width:7, height:7, borderRadius:'50%', background:'var(--accent)', animation:`bounce 1.2s ${d}s infinite`, display:'inline-block' }}/>)}
