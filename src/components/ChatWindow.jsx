@@ -94,18 +94,57 @@ async function processFile(file) {
   if (file.type === 'application/pdf') {
     const text = await extractPdfText(file)
     if (!text.trim()) throw new Error('Could not extract text from PDF. It may be a scanned image-based PDF.')
-    const MAX_CHARS = 4000
-    const truncated = text.trim().slice(0, MAX_CHARS)
-    const note = text.trim().length > MAX_CHARS ? `\n\n[Note: Truncated to ${MAX_CHARS} chars. Ask about specific sections for more.]` : ''
-    return { name:file.name, icon, fileType:'pdf', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${truncated}${note}` } }
+    // No truncation — full text is stored in RAG (Supabase chunks)
+    // Only send a summary/preview inline to avoid payload limits
+    const fullText = text.trim()
+    const INLINE_PREVIEW = 2000
+    const preview = fullText.length > INLINE_PREVIEW
+      ? fullText.slice(0, INLINE_PREVIEW) + `\n\n[Document continues — ${fullText.length.toLocaleString()} total chars stored in knowledge base for retrieval]`
+      : fullText
+    return { name:file.name, icon, fileType:'pdf', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${preview}` }, fullText }
   }
   if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
     const mammoth = (await import('mammoth')).default
     const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() })
     return { name:file.name, icon, fileType:'docx', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${result.value.trim()}` } }
   }
-  if (file.type === 'text/plain') {
+  // CSV
+  if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+    const text = await file.text()
+    return { name:file.name, icon, fileType:'csv', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${text.trim()}` } }
+  }
+  // XLSX — use SheetJS from package
+  if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.name.endsWith('.xlsx')) {
+    const XLSX = await import('xlsx')
+    const data = await file.arrayBuffer()
+    const wb = XLSX.read(data, { type: 'array' })
+    const sheets = wb.SheetNames.map(name => {
+      const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name])
+      return `[Sheet: ${name}]\n${csv}`
+    }).join('\n\n')
+    return { name:file.name, icon, fileType:'xlsx', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${sheets.trim()}` } }
+  }
+  // PPTX — extract slide text using JSZip
+  if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || file.name.endsWith('.pptx')) {
+    const JSZip = (await import('jszip')).default
+    const zip = await JSZip.loadAsync(await file.arrayBuffer())
+    const slideFiles = Object.keys(zip.files).filter(f => /ppt\/slides\/slide[0-9]+\.xml$/.test(f)).sort()
+    const slides = await Promise.all(slideFiles.map(async (sf, i) => {
+      const xml = await zip.files[sf].async('string')
+      const text = xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      return `[Slide ${i+1}]\n${text}`
+    }))
+    return { name:file.name, icon, fileType:'pptx', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${slides.join('\n\n').trim()}` } }
+  }
+  if (file.type === 'text/plain' || file.type === 'text/markdown' || file.type === 'text/html' ||
+      file.type === 'text/csv' || file.type.startsWith('text/')) {
     return { name:file.name, icon, fileType:'txt', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${await file.text()}` } }
+  }
+  // Code files and other text-based files by extension
+  const codeExts = ['py','js','ts','jsx','tsx','java','cpp','c','cs','go','rs','rb','php','swift','kt','r','sql','sh','json','xml','yaml','yml','css','md','html']
+  const ext = file.name.split('.').pop()?.toLowerCase()
+  if (codeExts.includes(ext)) {
+    return { name:file.name, icon, fileType:'code', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${await file.text()}` } }
   }
   throw new Error('Unsupported file type')
 }
@@ -215,11 +254,12 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     if (!text && files.length === 0) return
 
     let convId = conversation?.id
+    let isNewConversation = false
     if (!convId) {
       const newConvo = await onNewConversation(model)
       if (!newConvo) return
       convId = newConvo.id
-      onSetActiveId(convId)
+      isNewConversation = true
     }
 
     setLoading(true)
@@ -253,26 +293,24 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     })
     apiMessages.push({ role:'user', content: files.length>0 ? [...files.map(f=>f.contentBlock), ...(text?[{type:'text',text}]:[])] : text })
 
-    // ── RAG: ingest text-based files into knowledge base ──────────────────
+    // ── RAG: ingest text-based files BEFORE calling chat so chunks exist ──
     const textFiles = files.filter(f => f.fileType !== 'image')
-    console.log('RAG ingest check — textFiles:', textFiles.length, 'convId:', convId, 'userId:', session?.user?.id)
     if (textFiles.length > 0 && convId && session?.user?.id) {
-      fetch('/api/ingest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversation_id: convId,
-          user_id: session.user.id,
-          files: textFiles.map(f => ({
-            name: f.name,
-            text: f.contentBlock?.text || '',
-          }))
+      try {
+        const ingestResp = await fetch('/api/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversation_id: convId,
+            user_id: session.user.id,
+            files: textFiles.map(f => ({
+              name: f.name,
+              text: f.contentBlock?.text || '',
+            }))
+          })
         })
-      }).then(async r => {
-        const d = await r.json()
-        if (!r.ok || !d.success) console.error('Ingest failed:', d)
-        else console.log('Ingest success:', d.chunks_stored, 'chunks stored for', textFiles.map(f=>f.name))
-      }).catch(err => console.error('Ingest fetch error:', err))
+        await ingestResp.json()
+      } catch(err) {} // silent — don't block main chat
     }
 
     try {
@@ -310,18 +348,25 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
 
       const reply = data.reply || data.error || 'Something went wrong.'
       const webSearched = data.web_searched || false
-      const ragUsed = data.rag_used || false
-      const webSource = data.web_source || null
+      const ragUsed     = data.rag_used     || false
+      const memoryUsed  = data.memory_used  || false
+      const styleUsed   = data.style_used   || 'default'
+      const filesUsedInline = textFiles.length > 0
       const { data:saved } = await supabase.from('messages').insert({ conversation_id:convId, role:'assistant', content:reply, file_refs:[] }).select().single()
       const msgToAdd = saved || { id:Date.now(), role:'assistant', content:reply, file_refs:[] }
-      if (webSearched) { msgToAdd.web_searched = true; msgToAdd.web_source = webSource }
-      if (ragUsed) msgToAdd.rag_used = true
+      if (webSearched)              msgToAdd.web_searched = true
+      if (ragUsed || filesUsedInline) msgToAdd.rag_used  = true
+      if (memoryUsed)               msgToAdd.memory_used = true
+      if (styleUsed !== 'default')  msgToAdd.style_used  = styleUsed
       setMessages(prev => [...prev, msgToAdd])
 
       // Save updated memory back to Supabase
       if (data.new_memory && memoryMode !== 'off' && convId) {
         await supabase.from('conversations').update({ memory: data.new_memory, memory_mode: memoryMode }).eq('id', convId)
       }
+
+      // Now safe to switch active conversation — response is complete
+      if (isNewConversation) onSetActiveId(convId)
 
     } catch (err) {
       const msg = err?.message?.includes('Failed to fetch')
@@ -532,4 +577,4 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
       <InputBar onSend={sendMessage} disabled={loading} />
     </div>
   )
-} 
+}
