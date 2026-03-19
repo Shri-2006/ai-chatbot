@@ -4,6 +4,8 @@ import 'highlight.js/styles/github-dark.css'
 
 function formatContent(text) {
   if (!text) return ''
+  // Convert plain URLs to clickable links (but not ones already in href)
+  text = text.replace(/(?<!['"=])(https?:\/\/[^\s<>)"']+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;word-break:break-all">$1</a>')
   text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
     const id = 'code-' + Math.random().toString(36).slice(2, 8)
     let highlighted
@@ -77,8 +79,12 @@ export default function MessageBubble({ message }) {
         )}
         {!isUser && (message.web_searched || message.rag_used) && (
           <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8, fontSize:11.5, color:'var(--text2)', borderBottom:'1px solid var(--border)', paddingBottom:8 }}>
-            {message.web_searched && <span style={{ display:'flex', alignItems:'center', gap:4 }}>🔍 Searched the web</span>}
-            {message.rag_used     && <span style={{ display:'flex', alignItems:'center', gap:4 }}>📚 Used knowledge base</span>}
+            {message.web_searched && (
+              <span style={{ display:'flex', alignItems:'center', gap:4 }}>
+                🔍 Searched the web {message.web_source ? `via ${message.web_source}` : ''}
+              </span>
+            )}
+            {message.rag_used && <span style={{ display:'flex', alignItems:'center', gap:4 }}>📚 Used knowledge base</span>}
           </div>
         )}
         {isUser

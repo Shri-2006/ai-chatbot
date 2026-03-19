@@ -1,12 +1,13 @@
 /**
  * Vercel Serverless Function — /api/chat
- * SAP AI Core · Memory · RAG · Hybrid Web Search (Tavily → Exa → SearXNG → DDG)
+ * Full pipeline: Style → Memory (vector) → RAG (vector) → Search → Response
  */
 
 export const config = {
   api: { bodyParser: { sizeLimit: '50mb' } },
 }
 
+// ─── Token cache ──────────────────────────────────────────────────────────────
 let tokenCache = { token: null, expiresAt: 0 }
 
 async function getSapToken() {
@@ -29,14 +30,13 @@ async function getSapToken() {
   return tokenCache.token
 }
 
+// ─── Model registry ───────────────────────────────────────────────────────────
 const MODELS = {
   'claude-46-sonnet':     { sap: 'anthropic--claude-4.6-sonnet',       display: 'Claude Sonnet 4.6',     version: '1'  },
   'claude-46-opus':       { sap: 'anthropic--claude-4.6-opus',         display: 'Claude Opus 4.6',       version: '1'  },
   'claude-45-haiku':      { sap: 'anthropic--claude-4.5-haiku',        display: 'Claude Haiku 4.5',      version: '1'  },
   'claude-45-sonnet':     { sap: 'anthropic--claude-4.5-sonnet',       display: 'Claude Sonnet 4.5',     version: '1'  },
   'claude-45-opus':       { sap: 'anthropic--claude-4.5-opus',         display: 'Claude Opus 4.5',       version: '1'  },
-  // Claude 3.x — deprecated
-  //'claude-37-sonnet':   { sap: 'anthropic--claude-3.7-sonnet',       display: 'Claude Sonnet 3.7',     version: '1'  },
   'o1':                   { sap: 'o1',                                 display: 'o1',                    version: null, noTemp: true },
   'o3':                   { sap: 'o3',                                 display: 'o3',                    version: null, noTemp: true },
   'o3-mini':              { sap: 'o3-mini',                            display: 'o3 Mini',               version: null, noTemp: true },
@@ -55,7 +55,22 @@ const MODELS = {
   'gemini-20-flash-lite': { sap: 'gemini-2.0-flash-lite',             display: 'Gemini 2.0 Flash Lite', version: null },
 }
 const DEFAULT_MODEL_ID = 'claude-46-sonnet'
+const HAIKU            = 'anthropic--claude-4.5-haiku'
+const FAST_MODEL       = 'gemini-2.5-flash-lite'  // For memory compression
 
+// ─── Response style templates (Phase 4) ──────────────────────────────────────
+const STYLES = {
+  default:     '',
+  eli5:        'Explain everything as if talking to a 10-year-old. Use simple words, short sentences, and fun analogies.',
+  technical:   'Respond in a highly technical, precise manner. Use correct terminology, assume expert-level knowledge, include implementation details.',
+  concise:     'Be extremely concise. Use bullet points. No filler words. Maximum 5 sentences per answer.',
+  tutor:       'Act as a patient tutor. Break concepts into steps, check understanding, give examples, encourage questions.',
+  creative:    'Be creative, expressive, and engaging. Use vivid language, metaphors, and storytelling where appropriate.',
+  business:    'Use professional business language. Be formal, structured, and results-oriented.',
+  debug:       'You are a debugging assistant. Identify root causes, explain what went wrong, provide step-by-step fixes with code examples.',
+}
+
+// ─── Core SAP call ────────────────────────────────────────────────────────────
 async function callSAP(sapModelName, version, noTemp, messages, system) {
   const apiUrl        = process.env.SAP_AI_API_URL
   const resourceGroup = process.env.RESOURCE_GROUP || 'default'
@@ -64,12 +79,10 @@ async function callSAP(sapModelName, version, noTemp, messages, system) {
 
   const history   = messages.slice(0, -1).map(m => ({
     role:    m.role,
-    content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+    content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
   }))
   const lastMsg   = messages[messages.length - 1]
-  const userInput = typeof lastMsg.content === 'string'
-    ? lastMsg.content
-    : JSON.stringify(lastMsg.content)
+  const userInput = typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg.content)
 
   const payload = {
     orchestration_config: {
@@ -77,18 +90,15 @@ async function callSAP(sapModelName, version, noTemp, messages, system) {
         templating_module_config: {
           template: [
             { role: 'system', content: system },
-            { role: 'user',   content: '{{?user_input}}' }
-          ]
+            { role: 'user',   content: '{{?user_input}}' },
+          ],
         },
         llm_module_config: {
           model_name: sapModelName,
           ...(version ? { model_version: version } : {}),
-          model_params: {
-            max_tokens: 4096,
-            ...(noTemp ? {} : { temperature: 0.7 }),
-          }
-        }
-      }
+          model_params: { max_tokens: 4096, ...(noTemp ? {} : { temperature: 0.7 }) },
+        },
+      },
     },
     input_params:     { user_input: userInput },
     messages_history: history,
@@ -110,49 +120,91 @@ async function callSAP(sapModelName, version, noTemp, messages, system) {
   )
 }
 
-// ─── RAG: Search stored document chunks ──────────────────────────────────────
+// ─── HuggingFace embeddings ───────────────────────────────────────────────────
+async function getEmbedding(text) {
+  const apiKey = process.env.HUGGINGFACE_API_KEY
+  if (!apiKey) return null
+  try {
+    const resp = await fetch(
+      'https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2',
+      {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ inputs: text.slice(0, 512), options: { wait_for_model: true } }),
+      }
+    )
+    if (!resp.ok) return null
+    const data = await resp.json()
+    return Array.isArray(data[0]) ? data[0] : data
+  } catch { return null }
+}
 
-async function searchChunks(conversationId, query) {
+// ─── Supabase helper ──────────────────────────────────────────────────────────
+function sbHeaders(key) {
+  return { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' }
+}
+
+// ─── Vector RAG search (Phase 7) ─────────────────────────────────────────────
+async function searchChunksVector(conversationId, query) {
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!supabaseUrl || !supabaseKey) return null
 
   try {
-    const terms = query
-      .replace(/[^a-zA-Z0-9 ]/g, ' ')
-      .trim()
-      .split(/\s+/)
-      .filter(w => w.length > 2)
+    const embedding = await getEmbedding(query)
+    if (!embedding) {
+      // Fallback to keyword search if embedding fails
+      return await searchChunksKeyword(conversationId, query)
+    }
 
-    if (!terms.length) return null
-
-    // Full-text search — OR matching for broader results
-    const searchQuery = terms.join(' | ')
-    const ftsUrl = `${supabaseUrl}/rest/v1/document_chunks?conversation_id=eq.${conversationId}&search_vector=fts(english).${encodeURIComponent(searchQuery)}&order=chunk_index.asc&limit=6`
-    const ftsResp = await fetch(ftsUrl, {
-      headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+    const resp = await fetch(`${supabaseUrl}/rest/v1/rpc/match_document_chunks`, {
+      method:  'POST',
+      headers: sbHeaders(supabaseKey),
+      body:    JSON.stringify({
+        query_embedding:       embedding,
+        match_conversation_id: conversationId,
+        match_count:           6,
+        match_threshold:       0.25,
+      }),
     })
+    if (!resp.ok) return await searchChunksKeyword(conversationId, query)
+    const chunks = await resp.json()
+    if (!chunks?.length) return await searchChunksKeyword(conversationId, query)
 
-    if (!ftsResp.ok) return null
-    const chunks = await ftsResp.json()
+    const byFile = {}
+    for (const chunk of chunks) {
+      if (!byFile[chunk.file_name]) byFile[chunk.file_name] = []
+      byFile[chunk.file_name].push(`${chunk.content} (relevance: ${Math.round((chunk.similarity || 0) * 100)}%)`)
+    }
+    return Object.entries(byFile).map(([file, contents]) =>
+      `[From ${file}]:\n${contents.join('\n---\n')}`
+    ).join('\n\n')
+  } catch { return null }
+}
 
-    // Only return results if FTS actually found relevant chunks — NO fallback
-    // This prevents irrelevant document content being injected into unrelated queries
+// Keyword fallback
+async function searchChunksKeyword(conversationId, query) {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !supabaseKey) return null
+  try {
+    const terms = query.replace(/[^a-zA-Z0-9 ]/g, ' ').trim().split(/\s+/).filter(w => w.length > 2)
+    if (!terms.length) return null
+    const searchQuery = terms.join(' | ')
+    const url = `${supabaseUrl}/rest/v1/document_chunks?conversation_id=eq.${conversationId}&search_vector=fts(english).${encodeURIComponent(searchQuery)}&order=chunk_index.asc&limit=6`
+    const resp = await fetch(url, { headers: sbHeaders(supabaseKey) })
+    if (!resp.ok) return null
+    const chunks = await resp.json()
     if (!chunks?.length) return null
-
     const byFile = {}
     for (const chunk of chunks) {
       if (!byFile[chunk.file_name]) byFile[chunk.file_name] = []
       byFile[chunk.file_name].push(chunk.content)
     }
-
     return Object.entries(byFile).map(([file, contents]) =>
       `[From ${file}]:\n${contents.join('\n---\n')}`
     ).join('\n\n')
-
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
 async function hasStoredChunks(conversationId) {
@@ -162,131 +214,147 @@ async function hasStoredChunks(conversationId) {
   try {
     const resp = await fetch(
       `${supabaseUrl}/rest/v1/document_chunks?conversation_id=eq.${conversationId}&limit=1`,
-      { headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` } }
+      { headers: sbHeaders(supabaseKey) }
     )
     if (!resp.ok) return false
     const data = await resp.json()
     return data?.length > 0
-  } catch {
-    return false
-  }
+  } catch { return false }
 }
 
-// ─── Web Search: Tavily → Exa → SearXNG → DuckDuckGo ────────────────────────
-
-async function searchTavily(query) {
-  const apiKey = process.env.TAVILY_API_KEY
-  if (!apiKey) return null
+// ─── Vector memory (Phase 9) ──────────────────────────────────────────────────
+async function searchMemoryVector(conversationId, query) {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !supabaseKey) return null
   try {
-    const resp = await fetch('https://api.tavily.com/search', {
+    const embedding = await getEmbedding(query)
+    if (!embedding) return null
+    const resp = await fetch(`${supabaseUrl}/rest/v1/rpc/match_memory_entries`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key:        apiKey,
-        query,
-        search_depth:   'basic',
-        max_results:    5,
-        include_answer: true,
-      })
+      headers: sbHeaders(supabaseKey),
+      body:    JSON.stringify({
+        query_embedding:       embedding,
+        match_conversation_id: conversationId,
+        match_count:           5,
+        match_threshold:       0.25,
+      }),
     })
     if (!resp.ok) return null
-    const data = await resp.json()
+    const entries = await resp.json()
+    if (!entries?.length) return null
+    return entries.map(e => e.content).join('\n\n')
+  } catch { return null }
+}
 
-    const results = []
-    if (data.answer) results.push(`Summary: ${data.answer}`)
-    if (data.results?.length) {
-      const items = data.results.slice(0, 4).map(r =>
-        `- **${r.title}**: ${r.content?.slice(0, 200)}...\n  Source: ${r.url}`
+async function storeMemoryEntry(conversationId, userId, content, importance = 5) {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !supabaseKey) return
+  try {
+    const embedding = await getEmbedding(content)
+    await fetch(`${supabaseUrl}/rest/v1/memory_entries`, {
+      method:  'POST',
+      headers: { ...sbHeaders(supabaseKey), Prefer: 'return=minimal' },
+      body:    JSON.stringify({ conversation_id: conversationId, user_id: userId, content, importance, embedding }),
+    })
+  } catch {}
+}
+
+async function getMemoryCount(conversationId) {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !supabaseKey) return 0
+  try {
+    const resp = await fetch(
+      `${supabaseUrl}/rest/v1/memory_entries?conversation_id=eq.${conversationId}&select=id`,
+      { headers: { ...sbHeaders(supabaseKey), Prefer: 'count=exact' } }
+    )
+    const count = parseInt(resp.headers.get('content-range')?.split('/')[1] || '0')
+    return count
+  } catch { return 0 }
+}
+
+// ─── Memory compression (Phase 10) ───────────────────────────────────────────
+async function compressMemoryIfNeeded(conversationId, userId) {
+  try {
+    const count = await getMemoryCount(conversationId)
+    if (count < 20) return  // Only compress when there are many entries
+
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    // Get oldest entries
+    const resp = await fetch(
+      `${supabaseUrl}/rest/v1/memory_entries?conversation_id=eq.${conversationId}&order=created_at.asc&limit=10`,
+      { headers: sbHeaders(supabaseKey) }
+    )
+    if (!resp.ok) return
+    const oldEntries = await resp.json()
+    if (!oldEntries?.length) return
+
+    // Compress using fast model
+    const combined = oldEntries.map(e => e.content).join('\n')
+    const compressed = await callSAP(
+      FAST_MODEL, null, false,
+      [{ role: 'user', content: `Compress these memory entries into 2-3 concise sentences preserving all important facts:\n\n${combined}` }],
+      'You compress conversation memories. Return only the compressed summary, nothing else.'
+    )
+
+    // Delete old entries and store compressed version
+    const ids = oldEntries.map(e => `id=eq.${e.id}`).join(',')
+    for (const entry of oldEntries) {
+      await fetch(
+        `${supabaseUrl}/rest/v1/memory_entries?id=eq.${entry.id}`,
+        { method: 'DELETE', headers: sbHeaders(supabaseKey) }
       )
-      results.push(items.join('\n'))
     }
-    return results.length ? { text: results.join('\n\n'), source: 'Tavily' } : null
-  } catch {
-    return null
-  }
+    await storeMemoryEntry(conversationId, userId, `[Compressed] ${compressed}`, 7)
+  } catch {}
 }
 
-async function searchExa(query) {
-  const apiKey = process.env.EXA_API_KEY
-  if (!apiKey) return null
+// ─── Web search ───────────────────────────────────────────────────────────────
+async function searxngSearch(query) {
+  const searxngUrl = process.env.SEARXNG_URL
+  if (!searxngUrl) return await duckDuckGoSearch(query)
   try {
-    const resp = await fetch('https://api.exa.ai/search', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
-      body: JSON.stringify({
-        query,
-        num_results:     5,
-        use_autoprompt:  true,
-        contents:        { text: { max_characters: 500 } }
-      })
-    })
-    if (!resp.ok) return null
+    const isNewsQuery  = /news|today|latest|breaking|current|happening/i.test(query)
+    const isPriceQuery = /price|cost|worth|value|trading|bitcoin|btc|eth|stock|crypto|market/i.test(query)
+    const categories   = isNewsQuery ? 'news,general' : 'general'
+    const timeParam    = (isNewsQuery || isPriceQuery) ? '&time_range=day' : ''
+    const url = `${searxngUrl}/search?q=${encodeURIComponent(query)}&format=json&categories=${categories}&language=en${timeParam}`
+    const resp = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000) })
+    if (!resp.ok) throw new Error(`SearXNG ${resp.status}`)
     const data = await resp.json()
-
-    if (!data.results?.length) return null
-    const items = data.results.slice(0, 4).map(r =>
-      `- **${r.title}**: ${r.text?.slice(0, 200)}...\n  Source: ${r.url}`
-    )
-    return { text: items.join('\n'), source: 'Exa' }
-  } catch {
-    return null
-  }
+    const results = (data.results || []).slice(0, 6)
+    if (!results.length) return await duckDuckGoSearch(query)
+    const formatted = results.map((r, i) => {
+      const snippet = r.content?.trim() || '(no snippet)'
+      const date    = r.publishedDate ? ` — ${r.publishedDate}` : ''
+      return `[${i + 1}] **${r.title}**${date}\n${snippet}\nURL: ${r.url}`
+    }).join('\n\n')
+    return `${formatted}\n\nFull results: ${searxngUrl}/search?q=${encodeURIComponent(query)}`
+  } catch { return await duckDuckGoSearch(query) }
 }
 
-async function searchSearXNG(query) {
-  const baseUrl = process.env.SEARXNG_URL
-  if (!baseUrl) return null
+async function duckDuckGoSearch(query) {
   try {
-    const url = `${baseUrl}/search?q=${encodeURIComponent(query)}&format=json&engines=google,bing,duckduckgo`
-    const resp = await fetch(url, { headers: { 'User-Agent': 'AI-Chatbot/1.0' } })
-    if (!resp.ok) return null
-    const data = await resp.json()
-
-    if (!data.results?.length) return null
-    const items = data.results.slice(0, 4).map(r =>
-      `- **${r.title}**: ${r.content?.slice(0, 200)}...\n  Source: ${r.url}`
-    )
-    return { text: items.join('\n'), source: 'SearXNG' }
-  } catch {
-    return null
-  }
-}
-
-async function searchDuckDuckGo(query) {
-  try {
-    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`
+    const url  = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`
     const resp = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 AI-Chatbot/1.0' } })
     if (!resp.ok) return null
     const data = await resp.json()
-
     const results = []
     if (data.Answer)       results.push(`Direct answer: ${data.Answer}`)
-    if (data.AbstractText) results.push(`${data.AbstractSource}: ${data.AbstractText}`)
-    if (data.RelatedTopics?.length) {
-      const topics = data.RelatedTopics.filter(t => t.Text).slice(0, 3).map(t => `- ${t.Text}`)
-      if (topics.length) results.push('Related:\n' + topics.join('\n'))
-    }
-    return results.length ? { text: results.join('\n\n'), source: 'DuckDuckGo' } : null
-  } catch {
-    return null
-  }
+    if (data.AbstractText) results.push(`${data.AbstractSource}: ${data.AbstractText}\nSource: ${data.AbstractURL || ''}`)
+    if (data.Definition)   results.push(`Definition (${data.DefinitionSource}): ${data.Definition}`)
+    const searchLink = `Search link: https://duckduckgo.com/?q=${encodeURIComponent(query)}`
+    results.push(searchLink)
+    return results.length > 1 ? results.join('\n\n') : null
+  } catch { return null }
 }
-
-async function webSearch(query) {
-  // Cascade: Tavily → Exa → SearXNG → DuckDuckGo
-  return (
-    await searchTavily(query)    ||
-    await searchExa(query)       ||
-    await searchSearXNG(query)   ||
-    await searchDuckDuckGo(query)
-  )
-}
-
-// ─── Search decision (keyword fast-path + Haiku fallback) ────────────────────
 
 async function shouldSearch(userMessage, callSAPFn) {
   const msg = userMessage.toLowerCase()
-
   const searchPatterns = [
     /today|tonight|right now|current(ly)?|latest|recent|now/,
     /what('s| is) the (date|time|day|weather|price|score|news)/,
@@ -294,110 +362,118 @@ async function shouldSearch(userMessage, callSAPFn) {
     /news|breaking|update|attack|war|election|crisis|disaster/,
     /stock|price|rate|cost|value|worth|market/,
     /who (is|won|leads|rules)/,
-    /when (is|was|did|does|will)/,
     /score|match|game result|fixture/,
     /weather|forecast|temperature/,
     /release|launch|announce/,
   ]
   if (searchPatterns.some(p => p.test(msg))) return true
-
   const noSearchPatterns = [
     /^(hi|hello|hey|thanks|thank you|ok|okay|sure|yes|no|bye)/,
     /how do (i|you|we) (code|write|fix|debug|build|create|make)/,
-    /what is (a |an )?(function|variable|class|array|loop|algorithm)/,
-    /explain|summarize|translate|rewrite|improve|fix (my|this|the)/,
+    /what is (a |an )?(function|variable|class|array|loop|algorithm|recursion)/,
+    /explain|summarize|translate|rewrite|improve/,
   ]
   if (noSearchPatterns.some(p => p.test(msg))) return false
-
-  // Ambiguous — ask Haiku
-  const system = `You decide if a message needs a real-time web search. Reply ONLY "yes" or "no". Be generous — when in doubt say yes.
-YES: current events, time-sensitive info, real people's current status, live data, recent releases.
-NO: coding, math, concepts, file analysis, creative writing, stable historical facts.`
+  // Haiku fallback for ambiguous
   try {
     const result = await callSAPFn(
-      'anthropic--claude-4.5-haiku', '1', false,
-      [{ role: 'user', content: `Search needed? "${userMessage}"` }],
-      system
+      HAIKU, '1', false,
+      [{ role: 'user', content: `Does this need a web search to answer accurately? "${userMessage}" Reply only "yes" or "no".` }],
+      'You decide if a query needs real-time web search. Respond ONLY with "yes" or "no". Be generous — when in doubt, say yes.'
     )
     return result.trim().toLowerCase().startsWith('yes')
-  } catch {
-    return false
-  }
+  } catch { return false }
 }
 
-// ─── Memory ──────────────────────────────────────────────────────────────────
-
+// ─── Memory update (rolling summary) ─────────────────────────────────────────
 async function updateMemory(existingMemory, userMessage, assistantReply, fileNames, mode) {
-  const fileNote = fileNames?.length ? `\nFiles in this exchange: ${fileNames.join(', ')}` : ''
-
-  const summarySystem = `You maintain a concise rolling summary of a conversation.
-Update the summary to capture: main topics, key facts, files shared and what they contained, questions asked and answered, any ongoing tasks.
-Be brief — aim for 200-400 words. Return ONLY the updated summary.
-Current summary: ${existingMemory || '(none yet)'}`
-
-  const fullSystem = `You maintain a detailed memory of a conversation.
-Update it to include ALL important information: topics discussed, files shared with summaries, questions and full answers, code/analysis done, user context and goals, unresolved topics.
-Be thorough — this replaces needing the full history. Return ONLY the updated memory.
-Current memory: ${existingMemory || '(none yet)'}`
-
-  const system = mode === 'full' ? fullSystem : summarySystem
-  const messages = [{
-    role: 'user',
-    content: `Exchange to add:\nUSER: ${typeof userMessage === 'string' ? userMessage : '[files/content]'}${fileNote}\nASSISTANT: ${assistantReply}\n\nUpdate the memory.`
-  }]
-
-  try {
-    return await callSAP('anthropic--claude-4.5-haiku', '1', false, messages, system)
-  } catch {
-    return existingMemory || ''
-  }
+  const fileNote = fileNames?.length ? `\nFiles: ${fileNames.join(', ')}` : ''
+  const summarySystem = `Maintain a concise rolling summary (200-400 words max). Capture: topics, facts, files, Q&A, tasks. Return ONLY the updated summary.\nCurrent: ${existingMemory || '(none)'}`
+  const fullSystem    = `Maintain a detailed memory. Include all topics, files, Q&A, code, user context, unresolved items. Return ONLY the updated memory.\nCurrent: ${existingMemory || '(none)'}`
+  const messages = [{ role: 'user', content: `USER: ${typeof userMessage === 'string' ? userMessage : '[files]'}${fileNote}\nASSISTANT: ${assistantReply}\n\nUpdate memory.` }]
+  try { return await callSAP(HAIKU, '1', false, messages, mode === 'full' ? fullSystem : summarySystem) }
+  catch { return existingMemory || '' }
 }
 
-// ─── System prompt ───────────────────────────────────────────────────────────
+// ─── Identity block ───────────────────────────────────────────────────────────
+function buildIdentityBlock(displayName, sapModelName, maker) {
+  const now     = new Date()
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
+  return `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+IDENTITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+You are ${displayName}, made by ${maker}, running via SAP AI Core.
+Today: ${dateStr} | Time: ${timeStr}
+Model ID: ${sapModelName}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+}
 
-const buildSystem = (displayName, maker, memory, memoryMode, hasRag, webSearchEngine) => {
-  const base = `You are ${displayName}, an AI assistant made by ${maker}, running via SAP AI Core.
+// ─── System prompt builder ────────────────────────────────────────────────────
+function buildSystem({ displayName, sapModelName, maker, memory, memoryMode, style, ragContext, webContext, webQuery, memoryContext }) {
+  const identity = buildIdentityBlock(displayName, sapModelName, maker)
+  const styleBlock = style && STYLES[style] ? `\nRESPONSE STYLE: ${STYLES[style]}\n` : ''
 
-CAPABILITIES YOU HAVE IN THIS DEPLOYMENT:
-- Web search: ENABLED (${webSearchEngine || 'DuckDuckGo fallback'}). When you see "WEB SEARCH RESULTS" in your context, that information came from a live web search. Tell the user when you are using web search results.
-- Document knowledge base (RAG): ${hasRag ? 'ENABLED. When you see "KNOWLEDGE BASE" in your context, that content was retrieved from documents the user uploaded. Tell the user when you are drawing from their uploaded documents.' : 'No documents have been uploaded to this conversation yet.'}
-- Conversation memory: ENABLED. Your memory of this conversation is maintained across messages.
+  const base = `${identity}${styleBlock}
+You specialize in general Q&A, coding help, document analysis, and creative tasks.
+When using code: explain WHAT, WHY, and HOW. Break into steps. Add comments.
+Keep responses clear, friendly, and thorough.
 
-If a user asks whether you have internet access, RAG, or memory — answer YES and explain how each works.
+Capabilities active in this session:
+• Web search (SearXNG + DuckDuckGo fallback) — activates automatically for current info
+• RAG knowledge base — documents you upload are chunked and searched with vector similarity
+• Conversation memory — key facts are stored and retrieved across your session`
 
-You specialize in:
-1. General Q&A — answer questions clearly and concisely
-2. Coding help — explain code in plain English, debug issues, write snippets step by step
+  const memoryBlock = memoryContext ? `
 
-When helping with code:
-- Explain WHAT the code does and WHY, not just HOW
-- Use simple language
-- Break complex problems into small numbered steps
-- Add comments explaining each important line
-
-Keep responses clear, friendly, and thorough.`
-
-  if (!memory || memoryMode === 'off') return base
-
-  return `${base}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RELEVANT MEMORY (vector retrieved)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${memoryContext}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━` : (memory && memoryMode !== 'off') ? `
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CONVERSATION MEMORY (${memoryMode === 'full' ? 'Detailed' : 'Summary'})
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ${memory}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━` : ''
+
+  const ragBlock = ragContext ? `
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+KNOWLEDGE BASE (vector search results)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${ragContext.slice(0, 6000)}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━` : ''
+
+  const webBlock = webContext ? `
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WEB SEARCH RESULTS
+Query: "${webQuery}"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${webContext}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Cite sources and include URLs in your response.` : ''
+
+  return `${base}${memoryBlock}${ragBlock}${webBlock}`
 }
 
-// ─── Handler ─────────────────────────────────────────────────────────────────
-
+// ─── Handler ──────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Origin',  '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.status(204).end()
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' })
 
-  const { messages, model, system_override, memory, memory_mode, attached_file_names, web_search_enabled, conversation_id } = req.body || {}
+  const {
+    messages, model, system_override,
+    memory, memory_mode, attached_file_names,
+    web_search_enabled, conversation_id, user_id,
+    style,
+  } = req.body || {}
+
   if (!messages?.length) return res.status(400).json({ error: 'No messages provided' })
 
   const modelInfo    = MODELS[model] || MODELS[DEFAULT_MODEL_ID]
@@ -409,102 +485,82 @@ export default async function handler(req, res) {
 
   const maker = sapModelName.startsWith('anthropic--') ? 'Anthropic' :
     (sapModelName.startsWith('gpt') || sapModelName.startsWith('o')) ? 'OpenAI' :
-    sapModelName.startsWith('gemini') ? 'Google' :
-    sapModelName.startsWith('mistralai') ? 'Mistral AI' :
-    sapModelName.startsWith('amazon') ? 'Amazon' :
-    sapModelName.startsWith('meta') ? 'Meta' : 'an AI provider'
+    sapModelName.startsWith('gemini') ? 'Google' : 'an AI provider'
 
   if (!process.env.SAP_ORCHESTRATION_DEPLOYMENT_ID) {
     return res.status(500).json({ error: 'SAP_ORCHESTRATION_DEPLOYMENT_ID not set.' })
   }
 
-  const HISTORY_LIMIT = memoryMode === 'off' ? 20 : 5
+  const HISTORY_LIMIT  = memoryMode === 'off' ? 20 : 5
   const recentMessages = messages.slice(-HISTORY_LIMIT)
+  const lastUserMsg    = messages[messages.length - 1]
+  const userText       = typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : ''
+
+  // ── PIPELINE ORDER: Memory → RAG → Search → Response ─────────────────────
+
+  // 1. Vector memory retrieval
+  let memoryContext = null
+  if (conversation_id && memoryMode !== 'off') {
+    try { memoryContext = await searchMemoryVector(conversation_id, userText) } catch {}
+  }
+
+  // 2. RAG vector search
+  let ragContext = null
+  try {
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (conversation_id && serviceKey) {
+      const hasChunks = await hasStoredChunks(conversation_id)
+      if (hasChunks) ragContext = await searchChunksVector(conversation_id, userText)
+    }
+  } catch (err) { console.error('RAG error:', err.message) }
+
+  // 3. Web search
+  let webContext  = null
+  let webQuery    = null
+  const webSearchOn = web_search_enabled !== false
+  if (webSearchOn && userText) {
+    try {
+      const needsSearch = await shouldSearch(userText, callSAP)
+      if (needsSearch) { webQuery = userText; webContext = await searxngSearch(userText) }
+    } catch {}
+  }
+
+  // 4. Build system prompt
+  const system = system_override || buildSystem({
+    displayName, sapModelName, maker,
+    memory, memoryMode, style: style || 'default',
+    ragContext, webContext, webQuery, memoryContext,
+  })
 
   try {
-    // ── Web search ────────────────────────────────────────────────────────────
-    let webResult   = null
-    let searchQuery = null
-    const webSearchOn = web_search_enabled !== false
-
-    if (webSearchOn) {
-      const lastUserMsg = messages[messages.length - 1]
-      const userText = typeof lastUserMsg?.content === 'string'
-        ? lastUserMsg.content
-        : JSON.stringify(lastUserMsg?.content)
-
-      const needsSearch = await shouldSearch(userText, callSAP)
-      if (needsSearch) {
-        searchQuery = userText
-        webResult   = await webSearch(userText)
-      }
-    }
-
-    // ── RAG ───────────────────────────────────────────────────────────────────
-    let ragContext = null
-    let hasRag     = false
-    try {
-      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-      if (conversation_id && serviceKey) {
-        hasRag = await hasStoredChunks(conversation_id)
-        if (hasRag) {
-          const lastUserMsg = messages[messages.length - 1]
-          const userText = typeof lastUserMsg?.content === 'string'
-            ? lastUserMsg.content
-            : JSON.stringify(lastUserMsg?.content || '')
-          ragContext = await searchChunks(conversation_id, userText)
-        }
-      }
-    } catch (ragErr) {
-      console.error('RAG error (non-fatal):', ragErr.message)
-    }
-
-    // ── Build system prompt ───────────────────────────────────────────────────
-    const webEngine = webResult?.source || (webSearchOn ? 'enabled' : 'disabled')
-    let system = system_override || buildSystem(displayName, maker, memory, memoryMode, hasRag, webEngine)
-
-    if (ragContext) {
-      const MAX_RAG = 6000
-      const capped = ragContext.length > MAX_RAG ? ragContext.slice(0, MAX_RAG) + '\n[truncated]' : ragContext
-      system += `
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-KNOWLEDGE BASE (from uploaded files)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${capped}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
-    }
-
-    if (webResult) {
-      system += `
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WEB SEARCH RESULTS (${webResult.source}) — Query: "${searchQuery}"
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${webResult.text}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Use these results. Always mention the source and include the URLs when referencing specific results.`
-    }
-
     const reply = await callSAP(sapModelName, modelVersion, noTemp, recentMessages, system)
 
+    // Update rolling memory
     let newMemory = memory || null
     if (memoryMode !== 'off') {
-      const lastUserMsg = messages[messages.length - 1]
-      newMemory = await updateMemory(memory || '', lastUserMsg?.content, reply, attached_file_names || [], memoryMode)
+      const rawMsg = messages[messages.length - 1]
+      newMemory = await updateMemory(memory || '', rawMsg?.content, reply, attached_file_names || [], memoryMode)
+    }
+
+    // Store memory entry for vector retrieval (async, non-blocking)
+    if (conversation_id && user_id && userText && memoryMode !== 'off') {
+      storeMemoryEntry(conversation_id, user_id, `Q: ${userText.slice(0, 200)}\nA: ${reply.slice(0, 400)}`)
+        .then(() => compressMemoryIfNeeded(conversation_id, user_id))
+        .catch(() => {})
     }
 
     return res.status(200).json({
       reply,
       model_used:   sapModelName,
       new_memory:   newMemory,
-      web_searched: !!webResult,
-      web_source:   webResult?.source || null,
+      web_searched: !!webContext,
       rag_used:     !!ragContext,
+      memory_used:  !!memoryContext,
+      style_used:   style || 'default',
     })
 
   } catch (err) {
-    console.error('Chat error:', err.message, err.stack?.slice(0, 300))
+    console.error('Chat error:', err.message)
     return res.status(500).json({ error: err.message || 'Internal server error' })
   }
 }

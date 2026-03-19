@@ -36,10 +36,21 @@ const MODELS = [
 ]
 
 const FILE_ICONS = {
-  'image/jpeg':'🖼️','image/png':'🖼️',
+  'image/jpeg':'🖼️', 'image/png':'🖼️',
   'application/pdf':'📄',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'📝',
-  'text/plain':'📃',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'📊',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation':'📑',
+  'text/plain':'📃', 'text/markdown':'📃', 'text/html':'🌐', 'text/csv':'📊',
+  'text/x-python':'🐍', 'text/javascript':'📜', 'text/typescript':'📜',
+  'text/x-java':'☕', 'text/x-c':'⚙️', 'text/x-cpp':'⚙️',
+}
+
+function getFileIcon(file) {
+  if (FILE_ICONS[file.type]) return FILE_ICONS[file.type]
+  const ext = file.name.split('.').pop()?.toLowerCase()
+  const extIcons = { py:'🐍', js:'📜', ts:'📜', jsx:'📜', tsx:'📜', java:'☕', cpp:'⚙️', c:'⚙️', cs:'⚙️', go:'🔵', rs:'🦀', rb:'💎', php:'🐘', swift:'🍎', kt:'🎯', r:'📊', sql:'🗄️', sh:'💻', md:'📃', html:'🌐', css:'🎨', json:'📋', xml:'📋', yaml:'📋', csv:'📊' }
+  return extIcons[ext] || '📎'
 }
 
 function toBase64(file) {
@@ -75,7 +86,7 @@ async function extractPdfText(file) {
 }
 
 async function processFile(file) {
-  const icon = FILE_ICONS[file.type] || '📎'
+  const icon = getFileIcon(file)
   if (file.type === 'image/jpeg' || file.type === 'image/png') {
     const base64 = await toBase64(file)
     return { name:file.name, icon, fileType:'image', contentBlock:{ type:'image', source:{ type:'base64', media_type:file.type, data:base64 } } }
@@ -155,7 +166,7 @@ const InputBar = memo(function InputBar({ onSend, disabled }) {
           onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.color='var(--text2)'}}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         </button>
-        <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.png,.pdf,.docx,.txt" style={{ display:'none' }} onChange={handleFileSelect}/>
+        <input ref={fileInputRef} type="file" multiple accept=".jpg,.jpeg,.png,.pdf,.docx,.txt,.md,.csv,.xlsx,.pptx,.html,.py,.js,.ts,.jsx,.tsx,.java,.cpp,.c,.cs,.go,.rs,.rb,.php,.swift,.kt,.r,.sql,.sh,.json,.xml,.yaml,.yml,.css" style={{ display:'none' }} onChange={handleFileSelect}/>
         <textarea ref={inputRef} value={input}
           onChange={e=>{setInput(e.target.value);e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,160)+'px'}}
           onKeyDown={handleKeyDown}
@@ -166,7 +177,7 @@ const InputBar = memo(function InputBar({ onSend, disabled }) {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
       </div>
-      <div style={{ textAlign:'center', fontSize:11, color:'var(--text3)', marginTop:6 }}>JPG · PNG · PDF · DOCX · TXT · AI can make mistakes</div>
+      <div style={{ textAlign:'center', fontSize:11, color:'var(--text3)', marginTop:6 }}>JPG · PNG · PDF · DOCX · TXT · MD · CSV · XLSX · PPTX · HTML · Code files · AI can make mistakes</div>
     </div>
   )
 })
@@ -179,6 +190,8 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
   const [modelOpen, setModelOpen] = useState(false)
   const [memoryMode, setMemoryMode] = useState('summary')
   const [memoryOpen, setMemoryOpen] = useState(false)
+  const [style, setStyle] = useState('default')
+  const [styleOpen, setStyleOpen] = useState(false)
   const [webSearch, setWebSearch] = useState(true)
   const bottomRef = useRef(null)
 
@@ -190,11 +203,13 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
       .then(({ data }) => { if (data) setMessages(data); setLoadingHistory(false) })
     setModel(conversation.model || 'claude-46-sonnet')
     setMemoryMode(conversation.memory_mode || 'summary')
+    setStyle(conversation.style || 'default')
   }, [conversation?.id])
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:'smooth' }) }, [messages])
   useEffect(() => { const close = () => setModelOpen(false); if (modelOpen) window.addEventListener('click', close); return () => window.removeEventListener('click', close) }, [modelOpen])
   useEffect(() => { const close = () => setMemoryOpen(false); if (memoryOpen) window.addEventListener('click', close); return () => window.removeEventListener('click', close) }, [memoryOpen])
+  useEffect(() => { const close = () => setStyleOpen(false); if (styleOpen) window.addEventListener('click', close); return () => window.removeEventListener('click', close) }, [styleOpen])
 
   const sendMessage = useCallback(async function sendMessage(text, files) {
     if (!text && files.length === 0) return
@@ -279,6 +294,8 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
           attached_file_names: files.map(f => f.name),
           web_search_enabled:  webSearch,
           conversation_id:     convId,
+          user_id:             session?.user?.id,
+          style,
         })
       })
 
@@ -345,6 +362,52 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
           🌐
           <span className="memory-label-text">{webSearch ? 'Search On' : 'Search Off'}</span>
         </button>
+
+
+        {/* Style selector */}
+        <div style={{ position:'relative' }} onClick={e=>e.stopPropagation()}>
+          <button onClick={()=>setStyleOpen(o=>!o)} style={{
+            display:'flex', alignItems:'center', gap:6,
+            background:'var(--surface)', border:`1px solid ${style!=='default'?'var(--accent)':'var(--border)'}`,
+            borderRadius:9, padding:'6px 10px', color: style!=='default'?'var(--accent)':'var(--text)', fontSize:12, fontWeight:500,
+            transition:'all .15s',
+          }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor='var(--accent)'}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=style!=='default'?'var(--accent)':'var(--border)'}>
+            <span style={{ fontSize:13 }}>🎨</span>
+            <span className="memory-label-text">{{ default:'Default', eli5:'ELI5', technical:'Technical', concise:'Concise', tutor:'Tutor', creative:'Creative', business:'Business', debug:'Debug' }[style]}</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color:'var(--text2)' }}><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          {styleOpen && (
+            <div style={{ position:'fixed', right:8, top:'auto', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:12, padding:6, minWidth:220, zIndex:1000, boxShadow:'0 8px 30px rgba(0,0,0,0.4)' }}>
+              {[
+                { id:'default',   icon:'💬', label:'Default',   desc:'Standard responses' },
+                { id:'eli5',      icon:'🧒', label:'ELI5',      desc:"Explain like I'm 5" },
+                { id:'technical', icon:'🔬', label:'Technical', desc:'Expert-level detail' },
+                { id:'concise',   icon:'⚡', label:'Concise',   desc:'Short and to the point' },
+                { id:'tutor',     icon:'📚', label:'Tutor',     desc:'Step-by-step teaching' },
+                { id:'creative',  icon:'🎨', label:'Creative',  desc:'Expressive and engaging' },
+                { id:'business',  icon:'💼', label:'Business',  desc:'Professional and formal' },
+                { id:'debug',     icon:'🐛', label:'Debug',     desc:'Code debugging focus' },
+              ].map(s => (
+                <button key={s.id} onClick={()=>{ setStyle(s.id); setStyleOpen(false) }} style={{
+                  width:'100%', display:'flex', alignItems:'center', gap:10,
+                  padding:'9px 12px', borderRadius:8, border:'none', textAlign:'left',
+                  background: style===s.id ? 'var(--surface2)' : 'transparent', transition:'background .12s',
+                }}
+                  onMouseEnter={e=>{ if(style!==s.id) e.currentTarget.style.background='rgba(255,255,255,0.04)' }}
+                  onMouseLeave={e=>{ if(style!==s.id) e.currentTarget.style.background='transparent' }}>
+                  <span style={{ fontSize:15 }}>{s.icon}</span>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:500, color:'var(--text)' }}>{s.label}</div>
+                    <div style={{ fontSize:11.5, color:'var(--text2)' }}>{s.desc}</div>
+                  </div>
+                  {style===s.id && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" style={{ marginLeft:'auto' }}><polyline points="20 6 9 17 4 12"/></svg>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Memory mode toggle */}
         <div style={{ position:'relative' }} onClick={e=>e.stopPropagation()}>
