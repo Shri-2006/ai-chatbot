@@ -143,7 +143,8 @@ async function getEmbedding(text) {
       {
         method:  'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ inputs: text.slice(0, 512), options: { wait_for_model: true } }),
+        body:    JSON.stringify({ inputs: text.slice(0, 512), options: { wait_for_model: false } }),
+        signal:  AbortSignal.timeout(5000), // 5 second timeout — fail fast, fall back to keyword search
       }
     )
     if (!resp.ok) return null
@@ -336,7 +337,7 @@ async function searxngSearch(query) {
     const categories   = isNewsQuery ? 'news,general' : 'general'
     const timeParam    = (isNewsQuery || isPriceQuery) ? '&time_range=day' : ''
     const url = `${searxngUrl}/search?q=${encodeURIComponent(query)}&format=json&categories=${categories}&language=en${timeParam}`
-    const resp = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000) })
+    const resp = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8000) })
     if (!resp.ok) throw new Error(`SearXNG ${resp.status}`)
     const data = await resp.json()
     const results = (data.results || []).slice(0, 6)
@@ -556,10 +557,14 @@ export default async function handler(req, res) {
     }
 
     // Store memory entry for vector retrieval (async, non-blocking)
+    // Store memory async — do NOT await, never block the response
     if (conversation_id && user_id && userText && memoryMode !== 'off') {
-      storeMemoryEntry(conversation_id, user_id, `Q: ${userText.slice(0, 200)}\nA: ${reply.slice(0, 400)}`)
-        .then(() => compressMemoryIfNeeded(conversation_id, user_id))
-        .catch(() => {})
+      Promise.resolve().then(async () => {
+        try {
+          await storeMemoryEntry(conversation_id, user_id, `Q: ${userText.slice(0, 200)}\nA: ${reply.slice(0, 400)}`)
+          await compressMemoryIfNeeded(conversation_id, user_id)
+        } catch {}
+      })
     }
 
     return res.status(200).json({
