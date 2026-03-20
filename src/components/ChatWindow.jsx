@@ -5,15 +5,24 @@ import MessageBubble from './MessageBubble'
 const API_URL = '/api/chat'
 
 const MODELS = [
-  // Claude 4.6
-  { id:'claude-46-sonnet',      label:'Sonnet 4.6',          desc:'Latest · Balanced',        color:'#4e7fff', group:'Claude 4.6'   },
-  { id:'claude-46-opus',        label:'Opus 4.6',            desc:'Latest · Most powerful',   color:'#a855f7', group:'Claude 4.6'   },
+  // Claude 4 (latest on SAP)
+  { id:'claude-4-sonnet',       label:'Sonnet 4',            desc:'Latest · Balanced',        color:'#4e7fff', group:'Claude 4'     },
+  { id:'claude-4-opus',         label:'Opus 4',              desc:'Latest · Most powerful',   color:'#a855f7', group:'Claude 4'     },
   // Claude 4.5
   { id:'claude-45-haiku',       label:'Haiku 4.5',           desc:'Fast & cheap',             color:'#22c55e', group:'Claude 4.5'   },
   { id:'claude-45-sonnet',      label:'Sonnet 4.5',          desc:'Balanced',                 color:'#60a5fa', group:'Claude 4.5'   },
   { id:'claude-45-opus',        label:'Opus 4.5',            desc:'Most powerful',            color:'#c084fc', group:'Claude 4.5'   },
-  // Claude 3.x — deprecated
-  //{ id:'claude-37-sonnet',     label:'Sonnet 3.7',          desc:'Extended thinking',        color:'#f59e0b', group:'Claude 3' },
+  // Claude 4.6 — removed from SAP
+  //{ id:'claude-46-sonnet',     label:'Sonnet 4.6',          desc:'Removed from SAP',         color:'#4e7fff', group:'Claude 4.6' },
+  //{ id:'claude-46-opus',       label:'Opus 4.6',            desc:'Removed from SAP',         color:'#a855f7', group:'Claude 4.6' },
+  // DeepSeek
+  { id:'deepseek-v3',           label:'DeepSeek V3',         desc:'Latest DeepSeek',          color:'#06b6d4', group:'DeepSeek'     },
+  { id:'deepseek-r1',           label:'DeepSeek R1',         desc:'Reasoning model',          color:'#0891b2', group:'DeepSeek'     },
+  // Qwen
+  { id:'qwen3-max',             label:'Qwen3 Max',           desc:'Most capable Qwen',        color:'#f97316', group:'Qwen'         },
+  { id:'qwen35-plus',           label:'Qwen3.5 Plus',        desc:'Latest Qwen',              color:'#fb923c', group:'Qwen'         },
+  { id:'qwen-turbo',            label:'Qwen Turbo',          desc:'Fast Qwen',                color:'#fdba74', group:'Qwen'         },
+  { id:'qwen-flash',            label:'Qwen Flash',          desc:'Cheapest Qwen',            color:'#fed7aa', group:'Qwen'         },
   // OpenAI — o-series reasoning
   { id:'o1',                   label:'o1',                  desc:'Advanced reasoning',       color:'#0ea5e9', group:'OpenAI'   },
   { id:'o3',                   label:'o3',                  desc:'Most powerful reasoning',  color:'#38bdf8', group:'OpenAI'   },
@@ -113,9 +122,16 @@ async function processFile(file) {
     const text = await file.text()
     return { name:file.name, icon, fileType:'csv', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${text.trim()}` } }
   }
-  
-  if (file.name.endsWith('.xlsx')) {
-    throw new Error('XLSX not supported. Convert to CSV first.')
+  // XLSX — use SheetJS from package
+  if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.name.endsWith('.xlsx')) {
+    const XLSX = await import('xlsx')
+    const data = await file.arrayBuffer()
+    const wb = XLSX.read(data, { type: 'array' })
+    const sheets = wb.SheetNames.map(name => {
+      const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name])
+      return `[Sheet: ${name}]\n${csv}`
+    }).join('\n\n')
+    return { name:file.name, icon, fileType:'xlsx', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${sheets.trim()}` } }
   }
   // PPTX — not supported without jszip package
   if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || file.name.endsWith('.pptx')) {
@@ -210,7 +226,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
-  const [model, setModel] = useState('claude-46-sonnet')
+  const [model, setModel] = useState('claude-4-sonnet')
   const [modelOpen, setModelOpen] = useState(false)
   const [memoryMode, setMemoryMode] = useState('summary')
   const [memoryOpen, setMemoryOpen] = useState(false)
@@ -225,7 +241,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     setLoadingHistory(true)
     supabase.from('messages').select('*').eq('conversation_id', conversation.id).order('created_at', { ascending:true })
       .then(({ data }) => { if (data) setMessages(data); setLoadingHistory(false) })
-    setModel(conversation.model || 'claude-46-sonnet')
+    setModel(conversation.model || 'claude-4-sonnet')
     setMemoryMode(conversation.memory_mode || 'summary')
     setStyle(conversation.style || 'default')
   }, [conversation?.id])

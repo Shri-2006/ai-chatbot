@@ -32,11 +32,24 @@ async function getSapToken() {
 
 // ─── Model registry ───────────────────────────────────────────────────────────
 const MODELS = {
-  'claude-46-sonnet':     { sap: 'anthropic--claude-4.6-sonnet',       display: 'Claude Sonnet 4.6',     version: '1'  },
-  'claude-46-opus':       { sap: 'anthropic--claude-4.6-opus',         display: 'Claude Opus 4.6',       version: '1'  },
+  // Claude 4 (latest)
+  'claude-4-sonnet':      { sap: 'anthropic--claude-4-sonnet',         display: 'Claude Sonnet 4',       version: '1'  },
+  'claude-4-opus':        { sap: 'anthropic--claude-4-opus',           display: 'Claude Opus 4',         version: '1'  },
+  // Claude 4.5
   'claude-45-haiku':      { sap: 'anthropic--claude-4.5-haiku',        display: 'Claude Haiku 4.5',      version: '1'  },
   'claude-45-sonnet':     { sap: 'anthropic--claude-4.5-sonnet',       display: 'Claude Sonnet 4.5',     version: '1'  },
   'claude-45-opus':       { sap: 'anthropic--claude-4.5-opus',         display: 'Claude Opus 4.5',       version: '1'  },
+  // Claude 4.6 — deprecated on SAP, kept for reference
+  //'claude-46-sonnet':   { sap: 'anthropic--claude-4.6-sonnet',       display: 'Claude Sonnet 4.6',     version: '1'  },
+  //'claude-46-opus':     { sap: 'anthropic--claude-4.6-opus',         display: 'Claude Opus 4.6',       version: '1'  },
+  // DeepSeek
+  'deepseek-v3':          { sap: 'deepseek-v3.2',                      display: 'DeepSeek V3',           version: null },
+  'deepseek-r1':          { sap: 'deepseek-r1-0528',                   display: 'DeepSeek R1',           version: null, noTemp: true },
+  // Qwen
+  'qwen3-max':            { sap: 'qwen3-max',                          display: 'Qwen3 Max',             version: null },
+  'qwen35-plus':          { sap: 'qwen3.5-plus',                       display: 'Qwen3.5 Plus',          version: null },
+  'qwen-turbo':           { sap: 'qwen-turbo',                         display: 'Qwen Turbo',            version: null },
+  'qwen-flash':           { sap: 'qwen-flash',                         display: 'Qwen Flash',            version: null },
   'o1':                   { sap: 'o1',                                 display: 'o1',                    version: null, noTemp: true },
   'o3':                   { sap: 'o3',                                 display: 'o3',                    version: null, noTemp: true },
   'o3-mini':              { sap: 'o3-mini',                            display: 'o3 Mini',               version: null, noTemp: true },
@@ -54,7 +67,7 @@ const MODELS = {
   'gemini-20-flash':      { sap: 'gemini-2.0-flash',                  display: 'Gemini 2.0 Flash',      version: null },
   'gemini-20-flash-lite': { sap: 'gemini-2.0-flash-lite',             display: 'Gemini 2.0 Flash Lite', version: null },
 }
-const DEFAULT_MODEL_ID = 'claude-46-sonnet'
+const DEFAULT_MODEL_ID = 'claude-4-sonnet'
 const HAIKU            = 'anthropic--claude-4.5-haiku'
 const FAST_MODEL       = 'gemini-2.5-flash-lite'  // For memory compression
 
@@ -110,7 +123,7 @@ async function callSAP(sapModelName, version, noTemp, messages, system) {
     body:    JSON.stringify(payload),
   })
   const rawText = await resp.text()
-  if (!resp.ok) throw new Error(`SAP error ${resp.status}: ${rawText.slice(0, 2000)}`)
+  if (!resp.ok) throw new Error(`SAP error ${resp.status}: ${rawText.slice(0, 400)}`)
   let result
   try { result = JSON.parse(rawText) } catch { throw new Error(`SAP returned invalid JSON: ${rawText.slice(0, 200)}`) }
   return (
