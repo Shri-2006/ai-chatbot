@@ -110,7 +110,7 @@ async function callSAP(sapModelName, version, noTemp, messages, system) {
     body:    JSON.stringify(payload),
   })
   const rawText = await resp.text()
-  if (!resp.ok) throw new Error(`SAP error ${resp.status}: ${rawText.slice(0, 400)}`)
+  if (!resp.ok) throw new Error(`SAP error ${resp.status}: ${rawText.slice(0, 2000)}`)
   let result
   try { result = JSON.parse(rawText) } catch { throw new Error(`SAP returned invalid JSON: ${rawText.slice(0, 200)}`) }
   return (
