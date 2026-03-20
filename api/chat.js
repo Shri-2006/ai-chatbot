@@ -39,9 +39,9 @@ const MODELS = {
   'claude-45-haiku':      { sap: 'anthropic--claude-4.5-haiku',        display: 'Claude Haiku 4.5',      version: '1'  },
   'claude-45-sonnet':     { sap: 'anthropic--claude-4.5-sonnet',       display: 'Claude Sonnet 4.5',     version: '1'  },
   'claude-45-opus':       { sap: 'anthropic--claude-4.5-opus',         display: 'Claude Opus 4.5',       version: '1'  },
-  // Claude 4.6 — deprecated on SAP, kept for reference
-  //'claude-46-sonnet':   { sap: 'anthropic--claude-4.6-sonnet',       display: 'Claude Sonnet 4.6',     version: '1'  },
-  //'claude-46-opus':     { sap: 'anthropic--claude-4.6-opus',         display: 'Claude Opus 4.6',       version: '1'  },
+  // Claude 4.6 (Opus available, Sonnet removed from SAP)
+  'claude-46-opus':       { sap: 'anthropic--claude-4.6-opus',         display: 'Claude Opus 4.6',       version: '1'  },
+  //'claude-46-sonnet':   { sap: 'anthropic--claude-4.6-sonnet',       display: 'Claude Sonnet 4.6',     version: '1'  }, // removed from SAP
   // DeepSeek
   'deepseek-v3':          { sap: 'deepseek-v3.2',                      display: 'DeepSeek V3',           version: null },
   'deepseek-r1':          { sap: 'deepseek-r1-0528',                   display: 'DeepSeek R1',           version: null, noTemp: true },
@@ -67,7 +67,7 @@ const MODELS = {
   'gemini-20-flash':      { sap: 'gemini-2.0-flash',                  display: 'Gemini 2.0 Flash',      version: null },
   'gemini-20-flash-lite': { sap: 'gemini-2.0-flash-lite',             display: 'Gemini 2.0 Flash Lite', version: null },
 }
-const DEFAULT_MODEL_ID = 'claude-4-sonnet'
+const DEFAULT_MODEL_ID = 'claude-45-sonnet'
 const HAIKU            = 'anthropic--claude-4.5-haiku'
 const FAST_MODEL       = 'gemini-2.5-flash-lite'  // For memory compression
 

@@ -12,9 +12,9 @@ const MODELS = [
   { id:'claude-45-haiku',       label:'Haiku 4.5',           desc:'Fast & cheap',             color:'#22c55e', group:'Claude 4.5'   },
   { id:'claude-45-sonnet',      label:'Sonnet 4.5',          desc:'Balanced',                 color:'#60a5fa', group:'Claude 4.5'   },
   { id:'claude-45-opus',        label:'Opus 4.5',            desc:'Most powerful',            color:'#c084fc', group:'Claude 4.5'   },
-  // Claude 4.6 — removed from SAP
+  // Claude 4.6 (Opus only — Sonnet removed from SAP)
+  { id:'claude-46-opus',        label:'Opus 4.6',            desc:'Most powerful 4.6',        color:'#a855f7', group:'Claude 4.6'   },
   //{ id:'claude-46-sonnet',     label:'Sonnet 4.6',          desc:'Removed from SAP',         color:'#4e7fff', group:'Claude 4.6' },
-  //{ id:'claude-46-opus',       label:'Opus 4.6',            desc:'Removed from SAP',         color:'#a855f7', group:'Claude 4.6' },
   // DeepSeek
   { id:'deepseek-v3',           label:'DeepSeek V3',         desc:'Latest DeepSeek',          color:'#06b6d4', group:'DeepSeek'     },
   { id:'deepseek-r1',           label:'DeepSeek R1',         desc:'Reasoning model',          color:'#0891b2', group:'DeepSeek'     },
@@ -122,9 +122,16 @@ async function processFile(file) {
     const text = await file.text()
     return { name:file.name, icon, fileType:'csv', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${text.trim()}` } }
   }
-  // XLSX — use SheetJS from package-xlsx not supported
-  if (file.name.endsWith('.xlsx')) {
-    throw new Error('XLSX not supported. Convert to CSV first.')
+  // XLSX — use SheetJS from package
+  if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || file.name.endsWith('.xlsx')) {
+    const XLSX = await import('xlsx')
+    const data = await file.arrayBuffer()
+    const wb = XLSX.read(data, { type: 'array' })
+    const sheets = wb.SheetNames.map(name => {
+      const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name])
+      return `[Sheet: ${name}]\n${csv}`
+    }).join('\n\n')
+    return { name:file.name, icon, fileType:'xlsx', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${sheets.trim()}` } }
   }
   // PPTX — not supported without jszip package
   if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || file.name.endsWith('.pptx')) {
@@ -219,7 +226,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
-  const [model, setModel] = useState('claude-4-sonnet')
+  const [model, setModel] = useState('claude-45-sonnet')
   const [modelOpen, setModelOpen] = useState(false)
   const [memoryMode, setMemoryMode] = useState('summary')
   const [memoryOpen, setMemoryOpen] = useState(false)
@@ -234,7 +241,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     setLoadingHistory(true)
     supabase.from('messages').select('*').eq('conversation_id', conversation.id).order('created_at', { ascending:true })
       .then(({ data }) => { if (data) setMessages(data); setLoadingHistory(false) })
-    setModel(conversation.model || 'claude-4-sonnet')
+    setModel(conversation.model || 'claude-45-sonnet')
     setMemoryMode(conversation.memory_mode || 'summary')
     setStyle(conversation.style || 'default')
   }, [conversation?.id])
