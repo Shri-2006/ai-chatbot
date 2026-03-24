@@ -1,36 +1,46 @@
 # AI Chatbot
 
-Live Demo: https://ai-chatbot-eight-pi-10.vercel.app/
+**Live Demo:** https://ai-chatbot-eight-pi-10.vercel.app/
 
-Additional Repo: https://github.com/Shri-2006/searxng-ping
+**SearXNG Keep-Alive Repo:** https://github.com/Shri-2006/searxng-ping
 
-A full-stack AI chatbot with hybrid retrieval (memory + document RAG + live web search), built using SAP AI Core.
-It has:
-- Multi-model support (Claude, GPT, Gemini)
-- Persistent cross-device chat memory
-- Document-based question answering (RAG)
-- Real-time web search via SearXNG
-- Multi-user authentication and deployment on Vercel
+A full-stack AI chatbot with hybrid retrieval (vector memory + document RAG + live web search), built on SAP AI Core.
 
 ---
 
 ## Features
 
-- **Multiple AI models** — Claude (4.6-opus,sonnet, haiku, 4.5, opus sonnet and haiku), GPT (4o, 4.1, 5), Gemini (2.0 flash flash lite, pro, 2.5 flash flash lite, pro), grouped by provider in a scrollable dropdown
+- **30+ AI models** — Claude, GPT, Gemini, DeepSeek, and Qwen; grouped by provider in a scrollable dropdown
 - **Persistent chat history** — conversations saved to Supabase and synced across all devices and browsers
 - **Multi-user authentication** — sign up and log in with email and password
 - **Conversation memory** — three modes per conversation:
-  -  Off — sends last 20 messages each time (no memory)
-  -  Summary — rolling summary updated after each reply (default, fast)
-  -  Full Memory — detailed record of everything discussed
-- **RAG (Retrieval Augmented Generation)** —uploaded documents are chunked and stored in Supabase. Relevant sections are retrieved using search and injected into the model prompt for context-aware responses.
-- **Hybrid web search (SearXNG)** — integrates a self-hosted SearXNG instance for real-time results. The system conditionally triggers search for time-sensitive queries and falls back to DuckDuckGo if unavailable.
-- **File attachments** — JPG, PNG, PDF, DOCX, TXT supported (up to 5 files, 20MB each). PDFs are extracted client-side via pdf.js
+  - Off — sends last 20 messages each time (no memory)
+  - Summary — rolling summary updated after each reply (default)
+  - Full Memory — detailed record of everything discussed
+- **Vector memory retrieval** — past Q&A pairs are stored as embeddings and retrieved by semantic similarity per message
+- **RAG (Retrieval Augmented Generation)** — uploaded documents are chunked, embedded, and stored in Supabase; relevant sections are retrieved via vector search and injected into the prompt
+- **Hybrid web search (SearXNG)** — integrates a self-hosted SearXNG instance for real-time results; falls back to DuckDuckGo if unavailable
+- **Response style selector** — 8 modes: Default, ELI5, Technical, Concise, Tutor, Creative, Business, Debug
+- **File attachments** — JPG, PNG, PDF, DOCX, TXT, CSV, Markdown, HTML, and 20+ code extensions (up to 20 files, 20 MB each); PDFs extracted client-side via pdf.js
 - **Auto-generated conversation titles** — generated from the first message using Haiku
 - **Account management** — change password and delete account from the sidebar
 - **Mobile friendly** — responsive layout, works as a PWA (Add to Home Screen on Android/iOS)
-- **Conversations grouped by date** — Today, Yesterday, This week, This month, Older
-- **Hybrid context system** — dynamically combines memory, document retrieval, and live search to improve response quality
+- **Conversations grouped by date** — Today, Yesterday, This Week, This Month, Older
+
+---
+
+## Supported Models
+
+| Provider | Models |
+|----------|--------|
+| **Anthropic** | Claude Sonnet 4, Opus 4, Haiku 4.5, Sonnet 4.5, Opus 4.5, Opus 4.6 |
+| **OpenAI** | GPT-5, GPT-5 Mini, GPT-4o, GPT-4o Mini, GPT-4.1, GPT-4.1 Mini, GPT-4.1 Nano |
+| **OpenAI (Reasoning)** | o1, o3, o3 Mini, o4 Mini |
+| **Google** | Gemini 2.5 Pro, 2.5 Flash, 2.5 Flash Lite, 2.0 Flash, 2.0 Flash Lite |
+| **DeepSeek** | DeepSeek V3, DeepSeek R1 |
+| **Qwen** | Qwen3 Max, Qwen3.5 Plus, Qwen Turbo, Qwen Flash |
+
+All models are routed through SAP AI Core Orchestration Service.
 
 ---
 
@@ -39,13 +49,13 @@ It has:
 1. User sends a message through the React frontend on Vercel
 2. Message is saved to Supabase
 3. If web search is enabled, a keyword check (then Haiku fallback) decides whether to search
-4. If search needed, SearXNG fetches real web results with titles, snippets, and URLs
-5. If documents were uploaded, Supabase full-text search retrieves the most relevant chunks
-6. The frontend calls `/api/chat` with the message, memory, and any retrieved context
-7. `/api/chat` authenticates with SAP via OAuth2 and calls the SAP AI Core Orchestration Service
-8. The selected model responds using all available context
-9. Response is saved to Supabase; memory is updated in the background via Haiku
-10. Full conversation history is always accessible from any device via Supabase
+4. If search is needed, SearXNG fetches real web results with titles, snippets, and URLs
+5. If documents were uploaded, Supabase vector search retrieves the most relevant chunks
+6. Relevant past Q&A entries are retrieved from memory via vector similarity
+7. The frontend calls `/api/chat` with the message, memory, and all retrieved context
+8. `/api/chat` authenticates with SAP via OAuth2 and calls the SAP AI Core Orchestration Service
+9. The selected model responds using all available context
+10. Response is saved to Supabase; rolling memory and vector memory entries are updated in the background
 
 ---
 
@@ -65,15 +75,17 @@ It has:
 │  │   React Frontend      │  │  Serverless Functions   │    │
 │  │   (Vite + React)      │  │                         │    │
 │  │                       │  │  /api/chat.js           │    │
-│  │  • Login / Signup     │  │  • SAP auth             │    │
-│  │  • Chat UI            │  │  • Keyword search check │    │
-│  │  • Model selector     │  │  • SearXNG search       │    │
-│  │  • Memory toggle      │  │  • RAG chunk retrieval  │    │
-│  │  • Web search toggle  │  │  • Calls SAP AI Core    │    │
+│  │  • Login / Signup     │  │  • SAP OAuth2 auth      │    │
+│  │  • Chat UI            │  │  • Search decision      │    │
+│  │  • Model selector     │  │  • SearXNG web search   │    │
+│  │  • Memory toggle      │  │  • Vector RAG retrieval │    │
+│  │  • Web search toggle  │  │  • Vector memory lookup │    │
+│  │  • Style selector     │  │  • Calls SAP AI Core    │    │
 │  │  • File uploads       │  │  • Updates memory       │    │
 │  │                       │  │                         │    │
 │  │                       │  │  /api/ingest.js         │    │
 │  │                       │  │  • Chunks documents     │    │
+│  │                       │  │  • Generates embeddings │    │
 │  │                       │  │  • Stores in Supabase   │    │
 │  └───────────┬───────────┘  └────────────┬────────────┘    │
 │              │                           │                  │
@@ -85,32 +97,28 @@ It has:
 │      SUPABASE        │   │          SAP AI CORE             │
 │                      │   │                                  │
 │  • User accounts     │   │  Orchestration Service           │
-│  • Conversations     │   │  └── Claude 4.6 Sonnet / Opus    │
-│  • Messages          │   │  └── Claude 4.5 Haiku/Sonnet/Opus│
-│  • Conversation      │   │  └── GPT-5, GPT-5 Mini           │
-│    memory            │   │  └── GPT-4o, GPT-4.1 series      │
-│  • Document chunks   │   │  └── Gemini 2.5 Pro / Flash      │
-│    (RAG storage)     │   │  └── Gemini 2.0 Flash series     │
-│  • Row-level         │   │                                  │
-│    security          │   │  Haiku used internally for:      │
-│                      │   │  • Memory updates                │
-│  Free tier           │   │  • Search decision fallback      │
-│  PostgreSQL +        │   │  • Auto-titling                  │
-│  Full-text search    │   └──────────────────────────────────┘
-└──────────────────────┘
-                                           │
-                              ┌────────────▼────────────┐
-                              │   HUGGINGFACE SPACES    │
-                              │                         │
-                              │  SearXNG Instance       │
-                              │  • Self-hosted search   │
-                              │  • Google, Bing, Brave  │
-                              │  • Google News          │
-                              │  • Bing News            │
-                              │  • Unlimited queries    │
-                              │  • Kept alive by        │
-                              │    GitHub Actions ping  │
-                              └─────────────────────────┘
+│  • Conversations     │   │  └── Claude (4 / 4.5 / 4.6)     │
+│  • Messages          │   │  └── GPT-5, GPT-4o, GPT-4.1     │
+│  • Rolling memory    │   │  └── o1, o3, o3-mini, o4-mini   │
+│  • Vector memory     │   │  └── Gemini 2.5 / 2.0 series    │
+│    (memory_entries)  │   │  └── DeepSeek V3 / R1            │
+│  • Document chunks   │   │  └── Qwen3 / Qwen3.5            │
+│    (RAG storage)     │   │                                  │
+│  • pgvector indexes  │   │  Haiku used internally for:      │
+│  • Row-level         │   │  • Memory updates                │
+│    security          │   │  • Search decision fallback      │
+│                      │   │  • Auto-titling                  │
+│  Free tier           │   └──────────────────────────────────┘
+│  PostgreSQL +        │
+│  pgvector            │              │
+└──────────────────────┘   ┌──────────▼──────────────┐
+                           │   HUGGINGFACE           │
+                           │                         │
+                           │  • SearXNG Instance     │
+                           │    (web search)         │
+                           │  • Embedding API        │
+                           │    (all-MiniLM-L6-v2)   │
+                           └─────────────────────────┘
 ```
 
 ---
@@ -123,6 +131,8 @@ It has:
 | Hosting | Vercel (free) | Permanent URL, auto-deploys from GitHub |
 | Backend | Vercel Serverless Functions | `/api/chat` and `/api/ingest` |
 | Auth + DB | Supabase (free) | Users, conversations, messages, RAG chunks, memory |
+| Vector Search | pgvector (Supabase) | Semantic RAG retrieval and memory lookup |
+| Embeddings | HuggingFace Inference API (free) | `all-MiniLM-L6-v2` — 384-dim vectors |
 | AI | SAP AI Core Orchestration | Routes requests to selected AI model |
 | Web Search | SearXNG on HuggingFace Spaces (free) | Real web results for current queries |
 | Search Fallback | DuckDuckGo (free) | Fallback if SearXNG is unavailable |
@@ -134,8 +144,8 @@ It has:
 
 ```
 ├── api/
-│   ├── chat.js              ← Main serverless function (AI, search, RAG retrieval)
-│   └── ingest.js            ← Document ingestion (chunking + Supabase storage)
+│   ├── chat.js              ← Main serverless function (AI, search, RAG, memory)
+│   └── ingest.js            ← Document ingestion (chunking + embedding + storage)
 ├── src/
 │   ├── components/
 │   │   ├── Auth.jsx             ← Login / signup page
@@ -149,9 +159,10 @@ It has:
 │   ├── App.jsx                  ← Auth routing
 │   ├── main.jsx                 ← React entry point
 │   └── index.css                ← Global styles + mobile responsive
-├── schema.sql               ← Run first — creates all tables and policies
-├── add_memory.sql           ← Run second — adds memory columns
+├── schema.sql               ← Run first — creates all tables and RLS policies
+├── add_memory.sql           ← Run second — adds memory columns to conversations
 ├── rag_migration.sql        ← Run third — adds document_chunks table for RAG
+├── vector_migration.sql     ← Run fourth — pgvector, embedding columns, RPC search functions
 ├── vercel.json              ← Function config and routing
 ├── index.html               ← HTML entry point
 ├── vite.config.js           ← Vite config
@@ -177,27 +188,29 @@ npm install
 cp .env.example .env.local
 ```
 
-| Variable | Description |
-|----------|-------------|
-| `VITE_SUPABASE_URL` | Supabase project URL (Project Settings → API) |
-| `VITE_SUPABASE_ANON_KEY` | Supabase anon public key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (for RAG ingest) |
-| `SAP_AUTH_URL` | SAP OAuth2 URL from your SAP service key |
-| `SAP_CLIENT_ID` | SAP client ID |
-| `SAP_CLIENT_SECRET` | SAP client secret |
-| `SAP_AI_API_URL` | SAP AI Core API base URL |
-| `RESOURCE_GROUP` | SAP AI Core resource group (usually `default`) |
-| `SAP_ORCHESTRATION_DEPLOYMENT_ID` | Your SAP orchestration deployment ID |
-| `SEARXNG_URL` | Your SearXNG HuggingFace Space URL (optional but recommended) |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VITE_SUPABASE_URL` | ✅ | Supabase project URL (Project Settings → API) |
+| `VITE_SUPABASE_ANON_KEY` | ✅ | Supabase anon public key |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Supabase service role key (used by serverless functions for RAG ingest) |
+| `SAP_AUTH_URL` | ✅ | SAP OAuth2 token URL from your SAP service key |
+| `SAP_CLIENT_ID` | ✅ | SAP client ID |
+| `SAP_CLIENT_SECRET` | ✅ | SAP client secret |
+| `SAP_AI_API_URL` | ✅ | SAP AI Core API base URL |
+| `SAP_ORCHESTRATION_DEPLOYMENT_ID` | ✅ | Your SAP orchestration deployment ID |
+| `RESOURCE_GROUP` | ✅ | SAP AI Core resource group (usually `default`) |
+| `HUGGINGFACE_API_KEY` | ⚠️ optional | HuggingFace token — required for vector embeddings (RAG + vector memory). Without this, RAG falls back to keyword search and vector memory is disabled. |
+| `SEARXNG_URL` | ⚠️ optional | Your SearXNG HuggingFace Space URL. Without this, web search falls back to DuckDuckGo instant answers only. |
 
 ### 3 — Set up the database
 
-Run all three SQL files in **Supabase → SQL Editor** in order:
+Run all four SQL files in **Supabase → SQL Editor** in order:
 
 ```
-1. schema.sql           ← tables, RLS policies, triggers
-2. add_memory.sql       ← memory columns on conversations table
-3. rag_migration.sql    ← document_chunks table for RAG
+1. schema.sql            ← tables, RLS policies, triggers
+2. add_memory.sql        ← memory columns on conversations table
+3. rag_migration.sql     ← document_chunks table for RAG
+4. vector_migration.sql  ← pgvector extension, embedding columns, RPC search functions
 ```
 
 ### 4 — Set up SearXNG (optional but recommended)
@@ -225,10 +238,11 @@ After deploying, add your Vercel URL to **Supabase → Authentication → URL Co
 ## Known Limitations
 
 - PDF files are chunked at 800 characters with 100-character overlap during RAG ingest — very dense technical PDFs may need multiple queries to cover all content
-- Maximum 5 file attachments per message
+- Maximum 20 file attachments per message, 20 MB each
+- HuggingFace free tier embedding API has occasional cold starts; RAG falls back to keyword search automatically when this happens
 - SearXNG on HuggingFace free tier may have occasional cold starts — DuckDuckGo fallback handles this automatically
 - DuckDuckGo fallback returns instant answers only, not full web results
 - SAP AI Core has occasional 503 errors during high load — retrying the message usually works
 - Conversation memory adds a small delay per message (Haiku runs in the background after each reply)
-
-Didn't use embeddings because full-text search is simpler to implement and works well enough. I may add embeddings later to improve results but for now this handles current use cases.
+- PPTX files are not supported for RAG ingest — convert to PDF first
+- XLSX support requires SheetJS which is not currently bundled — convert to CSV first

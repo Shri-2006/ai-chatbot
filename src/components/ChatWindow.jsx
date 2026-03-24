@@ -122,9 +122,7 @@ async function processFile(file) {
     const text = await file.text()
     return { name:file.name, icon, fileType:'csv', contentBlock:{ type:'text', text:`[Contents of ${file.name}]:\n${text.trim()}` } }
   }
-  // XLSX — use SheetJS from package-Not supported
-  
-  // PPTX — not supported without jszip package
+  // PPTX — not supported, prompt user to convert
   if (file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || file.name.endsWith('.pptx')) {
     throw new Error('PPTX files are not currently supported. Please convert to PDF or TXT first.')
   }
@@ -368,7 +366,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     }
 
     setLoading(false)
-  }, [conversation, model, memoryMode, messages, onNewConversation, onSetActiveId, onUpdateConversation])
+  }, [conversation, model, memoryMode, style, webSearch, session, messages, onNewConversation, onSetActiveId, onUpdateConversation])
 
   const activeModel = MODELS.find(m=>m.id===model) || MODELS[0]
 

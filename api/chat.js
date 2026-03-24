@@ -498,8 +498,10 @@ export default async function handler(req, res) {
   const memoryMode   = memory_mode || 'summary'
 
   const maker = sapModelName.startsWith('anthropic--') ? 'Anthropic' :
-    (sapModelName.startsWith('gpt') || sapModelName.startsWith('o')) ? 'OpenAI' :
-    sapModelName.startsWith('gemini') ? 'Google' : 'an AI provider'
+    (sapModelName.startsWith('gpt') || sapModelName.startsWith('o1') || sapModelName.startsWith('o3') || sapModelName.startsWith('o4')) ? 'OpenAI' :
+    sapModelName.startsWith('gemini') ? 'Google' :
+    sapModelName.startsWith('deepseek') ? 'DeepSeek' :
+    sapModelName.startsWith('qwen') ? 'Alibaba Cloud' : 'an AI provider'
 
   if (!process.env.SAP_ORCHESTRATION_DEPLOYMENT_ID) {
     return res.status(500).json({ error: 'SAP_ORCHESTRATION_DEPLOYMENT_ID not set.' })
@@ -556,8 +558,7 @@ export default async function handler(req, res) {
       newMemory = await updateMemory(memory || '', rawMsg?.content, reply, attached_file_names || [], memoryMode)
     }
 
-    // Store memory entry for vector retrieval (async, non-blocking)
-    // Store memory async — do NOT await, never block the response
+    // Store vector memory entry async — do NOT await, never block the response
     if (conversation_id && user_id && userText && memoryMode !== 'off') {
       Promise.resolve().then(async () => {
         try {
