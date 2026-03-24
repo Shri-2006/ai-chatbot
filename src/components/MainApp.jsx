@@ -71,7 +71,7 @@ export default function MainApp({ session }) {
         profile={profile}
         onSelect={id => { setActiveId(id); setSidebarOpen(false) }}
         session={session}
-        onNew={newConversation}
+        onNew={async () => { const data = await newConversation(); if (data) { setActiveId(data.id); setSidebarOpen(false) } }}
         onDelete={deleteConversation}
         onSignOut={() => supabase.auth.signOut()}
       />
