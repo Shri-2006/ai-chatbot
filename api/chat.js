@@ -32,44 +32,71 @@ async function getSapToken() {
 
 // ─── Model registry ───────────────────────────────────────────────────────────
 const MODELS = {
-  // Claude 4 (latest)
-  'claude-4-sonnet':      { sap: 'anthropic--claude-4-sonnet',         display: 'Claude Sonnet 4',       version: '1'  },
-  'claude-4-opus':        { sap: 'anthropic--claude-4-opus',           display: 'Claude Opus 4',         version: '1'  },
+  // Claude 3 (legacy)
+  'claude-3-haiku':        { sap: 'anthropic--claude-3-haiku',             display: 'Claude Haiku 3',        version: '1'  },
+  'claude-35-sonnet':      { sap: 'anthropic--claude-3.5-sonnet',          display: 'Claude Sonnet 3.5',     version: '1'  },
+  'claude-37-sonnet':      { sap: 'anthropic--claude-3.7-sonnet',          display: 'Claude Sonnet 3.7',     version: '1'  },
+  // Claude 4
+  'claude-4-sonnet':       { sap: 'anthropic--claude-4-sonnet',            display: 'Claude Sonnet 4',       version: '1'  },
+  'claude-4-opus':         { sap: 'anthropic--claude-4-opus',              display: 'Claude Opus 4',         version: '1'  },
   // Claude 4.5
-  'claude-45-haiku':      { sap: 'anthropic--claude-4.5-haiku',        display: 'Claude Haiku 4.5',      version: '1'  },
-  'claude-45-sonnet':     { sap: 'anthropic--claude-4.5-sonnet',       display: 'Claude Sonnet 4.5',     version: '1'  },
-  'claude-45-opus':       { sap: 'anthropic--claude-4.5-opus',         display: 'Claude Opus 4.5',       version: '1'  },
-  // Claude 4.6 (Opus available, Sonnet removed from SAP)
-  'claude-46-opus':       { sap: 'anthropic--claude-4.6-opus',         display: 'Claude Opus 4.6',       version: '1'  },
-  //'claude-46-sonnet':   { sap: 'anthropic--claude-4.6-sonnet',       display: 'Claude Sonnet 4.6',     version: '1'  }, // removed from SAP
+  'claude-45-haiku':       { sap: 'anthropic--claude-4.5-haiku',           display: 'Claude Haiku 4.5',      version: '1'  },
+  'claude-45-sonnet':      { sap: 'anthropic--claude-4.5-sonnet',          display: 'Claude Sonnet 4.5',     version: '1'  },
+  'claude-45-opus':        { sap: 'anthropic--claude-4.5-opus',            display: 'Claude Opus 4.5',       version: '1'  },
+  // Claude 4.6
+  'claude-46-sonnet':      { sap: 'anthropic--claude-4.6-sonnet',          display: 'Claude Sonnet 4.6',     version: '1'  },
+  'claude-46-opus':        { sap: 'anthropic--claude-4.6-opus',            display: 'Claude Opus 4.6',       version: '1'  },
+  // Amazon Nova
+  'nova-micro':            { sap: 'amazon--nova-micro',                    display: 'Nova Micro',            version: null },
+  'nova-lite':             { sap: 'amazon--nova-lite',                     display: 'Nova Lite',             version: null },
+  'nova-pro':              { sap: 'amazon--nova-pro',                      display: 'Nova Pro',              version: null },
+  'nova-premier':          { sap: 'amazon--nova-premier',                  display: 'Nova Premier',          version: null },
+  // Cohere
+  'cohere-command-a':      { sap: 'cohere--command-a-reasoning',           display: 'Command A Reasoning',   version: null },
   // DeepSeek
-  'deepseek-v3':          { sap: 'deepseek-v3.2',                      display: 'DeepSeek V3',           version: null },
-  'deepseek-r1':          { sap: 'deepseek-r1-0528',                   display: 'DeepSeek R1',           version: null, noTemp: true },
+  'deepseek-v3':           { sap: 'deepseek-v3.2',                        display: 'DeepSeek V3',           version: null },
+  'deepseek-r1':           { sap: 'deepseek-r1-0528',                     display: 'DeepSeek R1',           version: null, noTemp: true },
+  // Meta
+  'llama3-70b':            { sap: 'meta--llama3-70b-instruct',             display: 'Llama 3 70B',           version: null },
+  // Mistral
+  'mistral-large':         { sap: 'mistralai--mistral-large-instruct',     display: 'Mistral Large',         version: null },
+  'mistral-medium':        { sap: 'mistralai--mistral-medium-instruct',    display: 'Mistral Medium',        version: null },
+  'mistral-small':         { sap: 'mistralai--mistral-small-instruct',     display: 'Mistral Small',         version: null },
+  // OpenAI — reasoning
+  'o1':                    { sap: 'o1',                                    display: 'o1',                    version: null, noTemp: true },
+  'o3':                    { sap: 'o3',                                    display: 'o3',                    version: null, noTemp: true },
+  'o3-mini':               { sap: 'o3-mini',                               display: 'o3 Mini',               version: null, noTemp: true },
+  'o4-mini':               { sap: 'o4-mini',                               display: 'o4 Mini',               version: null, noTemp: true },
+  // OpenAI — GPT
+  'gpt-52':                { sap: 'gpt-5.2',                               display: 'GPT-5.2',               version: null },
+  'gpt-5':                 { sap: 'gpt-5',                                 display: 'GPT-5',                 version: null },
+  'gpt-5-mini':            { sap: 'gpt-5-mini',                            display: 'GPT-5 Mini',            version: null },
+  'gpt-5-nano':            { sap: 'gpt-5-nano',                            display: 'GPT-5 Nano',            version: null },
+  'gpt-4o':                { sap: 'gpt-4o',                                display: 'GPT-4o',                version: null },
+  'gpt-4o-mini':           { sap: 'gpt-4o-mini',                           display: 'GPT-4o Mini',           version: null },
+  'gpt-41':                { sap: 'gpt-4.1',                               display: 'GPT-4.1',               version: null },
+  'gpt-41-mini':           { sap: 'gpt-4.1-mini',                          display: 'GPT-4.1 Mini',          version: null },
+  'gpt-41-nano':           { sap: 'gpt-4.1-nano',                          display: 'GPT-4.1 Nano',          version: null },
+  // Google Gemini
+  'gemini-3-pro':          { sap: 'gemini-3-pro-preview',                  display: 'Gemini 3 Pro',          version: null },
+  'gemini-25-pro':         { sap: 'gemini-2.5-pro',                        display: 'Gemini 2.5 Pro',        version: null },
+  'gemini-25-flash':       { sap: 'gemini-2.5-flash',                      display: 'Gemini 2.5 Flash',      version: null },
+  'gemini-25-flash-lite':  { sap: 'gemini-2.5-flash-lite',                 display: 'Gemini 2.5 Flash Lite', version: null },
+  'gemini-20-flash':       { sap: 'gemini-2.0-flash',                      display: 'Gemini 2.0 Flash',      version: null },
+  'gemini-20-flash-lite':  { sap: 'gemini-2.0-flash-lite',                 display: 'Gemini 2.0 Flash Lite', version: null },
+  // Perplexity Sonar
+  'sonar':                 { sap: 'sonar',                                  display: 'Sonar',                 version: null },
+  'sonar-pro':             { sap: 'sonar-pro',                              display: 'Sonar Pro',             version: null },
+  'sonar-deep-research':   { sap: 'sonar-deep-research',                   display: 'Sonar Deep Research',   version: null },
   // Qwen
-  'qwen3-max':            { sap: 'qwen3-max',                          display: 'Qwen3 Max',             version: null },
-  'qwen35-plus':          { sap: 'qwen3.5-plus',                       display: 'Qwen3.5 Plus',          version: null },
-  'qwen-turbo':           { sap: 'qwen-turbo',                         display: 'Qwen Turbo',            version: null },
-  'qwen-flash':           { sap: 'qwen-flash',                         display: 'Qwen Flash',            version: null },
-  'o1':                   { sap: 'o1',                                 display: 'o1',                    version: null, noTemp: true },
-  'o3':                   { sap: 'o3',                                 display: 'o3',                    version: null, noTemp: true },
-  'o3-mini':              { sap: 'o3-mini',                            display: 'o3 Mini',               version: null, noTemp: true },
-  'o4-mini':              { sap: 'o4-mini',                            display: 'o4 Mini',               version: null, noTemp: true },
-  'gpt-5':                { sap: 'gpt-5',                              display: 'GPT-5',                 version: null, noTemp: true },
-  'gpt-5-mini':           { sap: 'gpt-5-mini',                        display: 'GPT-5 Mini',            version: null, noTemp: true },
-  'gpt-4o':               { sap: 'gpt-4o',                            display: 'GPT-4o',                version: null },
-  'gpt-4o-mini':          { sap: 'gpt-4o-mini',                       display: 'GPT-4o Mini',           version: null },
-  'gpt-41':               { sap: 'gpt-4.1',                           display: 'GPT-4.1',               version: null },
-  'gpt-41-mini':          { sap: 'gpt-4.1-mini',                      display: 'GPT-4.1 Mini',          version: null },
-  'gpt-41-nano':          { sap: 'gpt-4.1-nano',                      display: 'GPT-4.1 Nano',          version: null },
-  'gemini-25-pro':        { sap: 'gemini-2.5-pro',                    display: 'Gemini 2.5 Pro',        version: null },
-  'gemini-25-flash':      { sap: 'gemini-2.5-flash',                  display: 'Gemini 2.5 Flash',      version: null },
-  'gemini-25-flash-lite': { sap: 'gemini-2.5-flash-lite',             display: 'Gemini 2.5 Flash Lite', version: null },
-  'gemini-20-flash':      { sap: 'gemini-2.0-flash',                  display: 'Gemini 2.0 Flash',      version: null },
-  'gemini-20-flash-lite': { sap: 'gemini-2.0-flash-lite',             display: 'Gemini 2.0 Flash Lite', version: null },
+  'qwen3-max':             { sap: 'qwen3-max',                             display: 'Qwen3 Max',             version: null },
+  'qwen35-plus':           { sap: 'qwen3.5-plus',                          display: 'Qwen3.5 Plus',          version: null },
+  'qwen-turbo':            { sap: 'qwen-turbo',                            display: 'Qwen Turbo',            version: null },
+  'qwen-flash':            { sap: 'qwen-flash',                            display: 'Qwen Flash',            version: null },
 }
-const DEFAULT_MODEL_ID = 'claude-45-sonnet'
+const DEFAULT_MODEL_ID = 'claude-46-sonnet'
 const HAIKU            = 'anthropic--claude-4.5-haiku'
-const FAST_MODEL       = 'gemini-2.5-flash-lite'  // For memory compression
+const FAST_MODEL       = 'gemini-2.5-flash'  // For memory compression
 
 // ─── Response style templates (Phase 4) ──────────────────────────────────────
 const STYLES = {
@@ -497,11 +524,17 @@ export default async function handler(req, res) {
   const noTemp       = modelInfo.noTemp || false
   const memoryMode   = memory_mode || 'summary'
 
-  const maker = sapModelName.startsWith('anthropic--') ? 'Anthropic' :
+  const maker =
+    sapModelName.startsWith('anthropic--') ? 'Anthropic' :
     (sapModelName.startsWith('gpt') || sapModelName.startsWith('o1') || sapModelName.startsWith('o3') || sapModelName.startsWith('o4')) ? 'OpenAI' :
     sapModelName.startsWith('gemini') ? 'Google' :
     sapModelName.startsWith('deepseek') ? 'DeepSeek' :
-    sapModelName.startsWith('qwen') ? 'Alibaba Cloud' : 'an AI provider'
+    sapModelName.startsWith('qwen') ? 'Alibaba Cloud' :
+    sapModelName.startsWith('amazon--') ? 'Amazon' :
+    sapModelName.startsWith('cohere--') ? 'Cohere' :
+    sapModelName.startsWith('meta--') ? 'Meta' :
+    sapModelName.startsWith('mistralai--') ? 'Mistral AI' :
+    sapModelName.startsWith('sonar') ? 'Perplexity' : 'an AI provider'
 
   if (!process.env.SAP_ORCHESTRATION_DEPLOYMENT_ID) {
     return res.status(500).json({ error: 'SAP_ORCHESTRATION_DEPLOYMENT_ID not set.' })
