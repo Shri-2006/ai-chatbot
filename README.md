@@ -10,7 +10,7 @@ A full-stack AI chatbot with hybrid retrieval (vector memory + document RAG + li
 
 ## Features
 
-- **30+ AI models** — Claude, GPT, Gemini, DeepSeek, and Qwen; grouped by provider in a scrollable dropdown
+- **48 AI models across 10 providers** — Claude, GPT, Gemini, DeepSeek, Qwen, Amazon Nova, Mistral, Meta, Cohere, and Perplexity Sonar; grouped by provider in a scrollable dropdown
 - **Persistent chat history** — conversations saved to Supabase and synced across all devices and browsers
 - **Multi-user authentication** — sign up and log in with email and password
 - **Conversation memory** — three modes per conversation:
@@ -18,7 +18,7 @@ A full-stack AI chatbot with hybrid retrieval (vector memory + document RAG + li
   - Summary — rolling summary updated after each reply (default)
   - Full Memory — detailed record of everything discussed
 - **Vector memory retrieval** — past Q&A pairs are stored as embeddings and retrieved by semantic similarity per message
-- **RAG (Retrieval Augmented Generation)** — uploaded documents are chunked, embedded, and stored in Supabase; relevant sections are retrieved via vector search and injected into the prompt
+- **RAG (Retrieval Augmented Generation)** — uploaded documents are chunked with structure-aware splitting, embedded, and stored in Supabase; relevant sections are retrieved via vector search and injected into the prompt
 - **Hybrid web search (SearXNG)** — integrates a self-hosted SearXNG instance for real-time results; falls back to DuckDuckGo if unavailable
 - **Response style selector** — 8 modes: Default, ELI5, Technical, Concise, Tutor, Creative, Business, Debug
 - **File attachments** — JPG, PNG, PDF, DOCX, TXT, CSV, Markdown, HTML, and 20+ code extensions (up to 20 files, 20 MB each); PDFs extracted client-side via pdf.js
@@ -33,14 +33,19 @@ A full-stack AI chatbot with hybrid retrieval (vector memory + document RAG + li
 
 | Provider | Models |
 |----------|--------|
-| **Anthropic** | Claude Sonnet 4, Opus 4, Haiku 4.5, Sonnet 4.5, Opus 4.5, Opus 4.6 |
-| **OpenAI** | GPT-5, GPT-5 Mini, GPT-4o, GPT-4o Mini, GPT-4.1, GPT-4.1 Mini, GPT-4.1 Nano |
+| **Anthropic** | Claude Haiku 3, Sonnet 3.5, Sonnet 3.7, Sonnet 4, Opus 4, Haiku 4.5, Sonnet 4.5, Opus 4.5, Sonnet 4.6, Opus 4.6 |
 | **OpenAI (Reasoning)** | o1, o3, o3 Mini, o4 Mini |
-| **Google** | Gemini 2.5 Pro, 2.5 Flash, 2.5 Flash Lite, 2.0 Flash, 2.0 Flash Lite |
+| **OpenAI (GPT)** | GPT-5.2, GPT-5, GPT-5 Mini, GPT-5 Nano, GPT-4o, GPT-4o Mini, GPT-4.1, GPT-4.1 Mini, GPT-4.1 Nano |
+| **Google** | Gemini 3 Pro, Gemini 2.5 Pro, 2.5 Flash, 2.5 Flash Lite, 2.0 Flash, 2.0 Flash Lite |
+| **Amazon** | Nova Micro, Nova Lite, Nova Pro, Nova Premier |
 | **DeepSeek** | DeepSeek V3, DeepSeek R1 |
+| **Meta** | Llama 3 70B |
+| **Mistral** | Mistral Large, Mistral Medium, Mistral Small |
+| **Cohere** | Command A Reasoning |
+| **Perplexity** | Sonar, Sonar Pro, Sonar Deep Research |
 | **Qwen** | Qwen3 Max, Qwen3.5 Plus, Qwen Turbo, Qwen Flash |
 
-All models are routed through SAP AI Core Orchestration Service.
+All models are routed through SAP AI Core Orchestration Service. Default model is **Claude Sonnet 4.6**.
 
 ---
 
@@ -84,7 +89,8 @@ All models are routed through SAP AI Core Orchestration Service.
 │  │  • File uploads       │  │  • Updates memory       │    │
 │  │                       │  │                         │    │
 │  │                       │  │  /api/ingest.js         │    │
-│  │                       │  │  • Chunks documents     │    │
+│  │                       │  │  • Structure-aware      │    │
+│  │                       │  │    chunking per type    │    │
 │  │                       │  │  • Generates embeddings │    │
 │  │                       │  │  • Stores in Supabase   │    │
 │  └───────────┬───────────┘  └────────────┬────────────┘    │
@@ -97,28 +103,30 @@ All models are routed through SAP AI Core Orchestration Service.
 │      SUPABASE        │   │          SAP AI CORE             │
 │                      │   │                                  │
 │  • User accounts     │   │  Orchestration Service           │
-│  • Conversations     │   │  └── Claude (4 / 4.5 / 4.6)     │
-│  • Messages          │   │  └── GPT-5, GPT-4o, GPT-4.1     │
-│  • Rolling memory    │   │  └── o1, o3, o3-mini, o4-mini   │
-│  • Vector memory     │   │  └── Gemini 2.5 / 2.0 series    │
-│    (memory_entries)  │   │  └── DeepSeek V3 / R1            │
-│  • Document chunks   │   │  └── Qwen3 / Qwen3.5            │
+│  • Conversations     │   │  └── Anthropic (Claude 3–4.6)   │
+│  • Messages          │   │  └── OpenAI (GPT + o-series)    │
+│  • Rolling memory    │   │  └── Google (Gemini 2.0–3)      │
+│  • Vector memory     │   │  └── Amazon (Nova)               │
+│    (memory_entries)  │   │  └── DeepSeek / Meta / Mistral  │
+│  • Document chunks   │   │  └── Cohere / Perplexity / Qwen │
 │    (RAG storage)     │   │                                  │
-│  • pgvector indexes  │   │  Haiku used internally for:      │
+│  • pgvector indexes  │   │  Haiku 4.5 used internally for: │
 │  • Row-level         │   │  • Memory updates                │
 │    security          │   │  • Search decision fallback      │
 │                      │   │  • Auto-titling                  │
-│  Free tier           │   └──────────────────────────────────┘
-│  PostgreSQL +        │
-│  pgvector            │              │
-└──────────────────────┘   ┌──────────▼──────────────┐
-                           │   HUGGINGFACE           │
-                           │                         │
-                           │  • SearXNG Instance     │
-                           │    (web search)         │
-                           │  • Embedding API        │
-                           │    (all-MiniLM-L6-v2)   │
-                           └─────────────────────────┘
+│  Free tier           │   │                                  │
+│  PostgreSQL +        │   │  Gemini 2.5 Flash used for:     │
+│  pgvector            │   │  • Memory compression            │
+└──────────────────────┘   └──────────────────────────────────┘
+                                           │
+                              ┌────────────▼────────────┐
+                              │   HUGGINGFACE           │
+                              │                         │
+                              │  • SearXNG Instance     │
+                              │    (web search)         │
+                              │  • Embedding API        │
+                              │    (all-MiniLM-L6-v2)   │
+                              └─────────────────────────┘
 ```
 
 ---
@@ -140,12 +148,25 @@ All models are routed through SAP AI Core Orchestration Service.
 
 ---
 
+## RAG Chunking Strategy
+
+Documents are chunked differently based on file type for better retrieval quality:
+
+| File Type | Strategy |
+|-----------|----------|
+| PDF, DOCX, TXT | Sentence-aware grouping (~600 chars, 2-sentence overlap) |
+| Markdown | Split by headers first, then sentence-group within each section |
+| Code files | Split at function/class/export boundaries |
+| CSV | 50 rows per chunk, header row repeated in every chunk |
+
+---
+
 ## Project Structure
 
 ```
 ├── api/
 │   ├── chat.js              ← Main serverless function (AI, search, RAG, memory)
-│   └── ingest.js            ← Document ingestion (chunking + embedding + storage)
+│   └── ingest.js            ← Document ingestion (structure-aware chunking + embedding)
 ├── src/
 │   ├── components/
 │   │   ├── Auth.jsx             ← Login / signup page
@@ -237,12 +258,13 @@ After deploying, add your Vercel URL to **Supabase → Authentication → URL Co
 
 ## Known Limitations
 
-- PDF files are chunked at 800 characters with 100-character overlap during RAG ingest — very dense technical PDFs may need multiple queries to cover all content
+- PDF files are chunked at ~600 characters with 2-sentence overlap — very dense technical PDFs may need multiple queries to cover all content
 - Maximum 20 file attachments per message, 20 MB each
 - HuggingFace free tier embedding API has occasional cold starts; RAG falls back to keyword search automatically when this happens
 - SearXNG on HuggingFace free tier may have occasional cold starts — DuckDuckGo fallback handles this automatically
 - DuckDuckGo fallback returns instant answers only, not full web results
 - SAP AI Core has occasional 503 errors during high load — retrying the message usually works
 - Conversation memory adds a small delay per message (Haiku runs in the background after each reply)
+- Perplexity Sonar models have their own built-in web search — enabling SearXNG on top is redundant but harmless
 - PPTX files are not supported for RAG ingest — convert to PDF first
-- XLSX support requires SheetJS which is not currently bundled — convert to CSV first
+- XLSX files convert to CSV first for RAG ingest
