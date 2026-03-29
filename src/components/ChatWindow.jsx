@@ -223,7 +223,7 @@ const InputBar = memo(function InputBar({ onSend, disabled }) {
         <textarea ref={inputRef} value={input}
           onChange={e=>{setInput(e.target.value);e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,160)+'px'}}
           onKeyDown={handleKeyDown}
-          placeholder="Message AI Assistant…  (Shift+Enter for new line)" rows={1}
+          placeholder="Message AI Knowledge System…  (Shift+Enter for new line)" rows={1}
           style={{ flex:1, background:'none', border:'none', outline:'none', color:'var(--text)', fontSize:14, resize:'none', maxHeight:160, lineHeight:1.5, fontFamily:'var(--font)' }}/>
         <button onClick={handleSend} disabled={disabled}
           style={{ width:34, height:34, borderRadius:10, flexShrink:0, background:disabled?'var(--border)':'linear-gradient(135deg,var(--accent),var(--accent2))', border:'none', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', transition:'all .15s' }}>
@@ -405,7 +405,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
         </button>
 
         <div style={{ flex:1, fontSize:14, fontWeight:500, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', minWidth:0 }}>
-          {conversation?.title || 'AI Assistant'}
+          {conversation?.title || 'AI Knowledge System'}
         </div>
 
         {/* Web search toggle */}

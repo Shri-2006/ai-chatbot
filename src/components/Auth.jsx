@@ -48,7 +48,7 @@ export default function Auth() {
       <div style={s.card}>
         <div>
           <div style={s.logo}>✦</div>
-          <div style={s.h1}>AI Assistant</div>
+          <div style={s.h1}>AI Knowledge System</div>
           <div style={s.sub}>Powered by Claude · SAP AI Core</div>
         </div>
         <div style={s.tabs}>

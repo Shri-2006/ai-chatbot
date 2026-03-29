@@ -31,7 +31,7 @@ export default function Sidebar({ open, conversations, activeId, profile, sessio
       <div style={{ padding:'16px 14px 12px', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
           <div style={{ width:30, height:30, borderRadius:8, flexShrink:0, background:'linear-gradient(135deg,var(--accent),var(--accent2))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:15 }}>✦</div>
-          <span style={{ fontSize:14, fontWeight:600, color:'var(--text)', letterSpacing:'-0.01em' }}>AI Assistant</span>
+          <span style={{ fontSize:14, fontWeight:600, color:'var(--text)', letterSpacing:'-0.01em' }}>AI Knowledge System</span>
         </div>
         <button onClick={onNew}
           style={{ width:'100%', display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:10, color:'var(--text2)', fontSize:13, fontWeight:500, transition:'all .15s' }}

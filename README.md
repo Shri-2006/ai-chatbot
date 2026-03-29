@@ -1,11 +1,10 @@
 # AI Knowledge System
-## A full-stack AI chatbot with hybrid retrieval (vector memory + document RAG + live web search), built on SAP AI Core.
 
 **Live Demo:** https://ai-chatbot-eight-pi-10.vercel.app/
 
 **SearXNG Keep-Alive Repo:** https://github.com/Shri-2006/searxng-ping
 
-
+A full-stack AI chatbot with hybrid retrieval (vector memory + document RAG + live web search), built on SAP AI Core.
 
 ---
 
