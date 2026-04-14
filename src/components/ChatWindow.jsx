@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback, memo } from 'react'
 import { supabase } from '../lib/supabase'
 import MessageBubble from './MessageBubble'
 
-const API_URL = '/api/chat'
+const BACKEND = import.meta.env.VITE_BACKEND_URL || ''
+const API_URL = BACKEND ? `${BACKEND}/odata/v4/chat/sendMessage` : '/api/chat'
 
 const MODELS = [
   // Claude 3 (legacy)
@@ -311,7 +312,7 @@ export default function ChatWindow({ conversation, session, profile, sidebarOpen
     const textFiles = files.filter(f => f.fileType !== 'image')
     if (textFiles.length > 0 && convId && session?.user?.id) {
       try {
-        const ingestResp = await fetch('/api/ingest', {
+        const ingestResp = await fetch(BACKEND ? `${BACKEND}/odata/v4/ingest/uploadDocument` : '/api/ingest', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
