@@ -82,9 +82,9 @@ const MODELS = {
   'gpt-41-mini':           { sap: 'gpt-4.1-mini',                          display: 'GPT-4.1 Mini',          version: null },
   'gpt-41-nano':           { sap: 'gpt-4.1-nano',                          display: 'GPT-4.1 Nano',          version: null },
   // Google Gemini
-  'gemini-31-pro': { sap: 'gemini-3.1-pro-preview-ea', display: 'Gemini 3.1 Pro', version: null },
+  'gemini-31-pro': { sap: 'gemini-3.1-pro', display: 'Gemini 3.1 Pro', version: '1' },
   'gemini-31-flash-lite': { sap: 'gemini-3.1-flash-lite',              display: 'Gemini 3.1 Flash Lite', version: null },
-  //not working 'gemini-3-pro':          { sap: 'gemini-3-pro-preview',                  display: 'Gemini 3 Pro',          version: null },
+  'gemini-3-pro':          { sap: 'gemini-3-pro-preview',                  display: 'Gemini 3 Pro',          version: null },
   'gemini-25-pro':         { sap: 'gemini-2.5-pro',                        display: 'Gemini 2.5 Pro',        version: null },
   'gemini-25-flash':       { sap: 'gemini-2.5-flash',                      display: 'Gemini 2.5 Flash',      version: null },
   'gemini-25-flash-lite':  { sap: 'gemini-2.5-flash-lite',                 display: 'Gemini 2.5 Flash Lite', version: null },

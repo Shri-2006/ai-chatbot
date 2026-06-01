@@ -57,7 +57,7 @@ const MODELS = [
   // Google Gemini
   { id:'gemini-31-pro',         label:'Gemini 3.1 Pro',      desc:'Most powerful Gemini',     color:'#dc2626', group:'Google'       },
   { id:'gemini-31-flash-lite',  label:'3.1 Flash Lite',      desc:'Fast & cheap Gemini 3.1',  color:'#fca5a5', group:'Google'       },
-  //broken { id:'gemini-3-pro',          label:'Gemini 3 Pro',        desc:'Latest Gemini',            color:'#e11d48', group:'Google'       },
+  { id:'gemini-3-pro',          label:'Gemini 3 Pro',        desc:'Latest Gemini',            color:'#e11d48', group:'Google'       },
   { id:'gemini-25-pro',         label:'Gemini 2.5 Pro',      desc:'Best Gemini 2.5',          color:'#f43f5e', group:'Google'       },
   { id:'gemini-25-flash',       label:'Gemini 2.5 Flash',    desc:'Fast & smart',             color:'#fb7185', group:'Google'       },
   { id:'gemini-25-flash-lite',  label:'2.5 Flash Lite',      desc:'Cheapest Gemini 2.5',      color:'#fda4af', group:'Google'       },
