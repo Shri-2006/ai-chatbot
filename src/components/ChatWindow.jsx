@@ -8,7 +8,7 @@ const MODELS = [
   // Claude 3 (legacy)
   { id:'claude-3-haiku',        label:'Haiku 3',             desc:'Fast & lightweight',       color:'#4ade80', group:'Claude 3'     },
   { id:'claude-35-sonnet',      label:'Sonnet 3.5',          desc:'Balanced',                 color:'#60a5fa', group:'Claude 3'     },
-  { id:'claude-37-sonnet',      label:'Sonnet 3.7',          desc:'Extended thinking',        color:'#818cf8', group:'Claude 3'     },
+  //depreceated { id:'claude-37-sonnet',      label:'Sonnet 3.7',          desc:'Extended thinking',        color:'#818cf8', group:'Claude 3'     },
   // Claude 4
   { id:'claude-4-sonnet',       label:'Sonnet 4',            desc:'Balanced',                 color:'#4e7fff', group:'Claude 4'     },
   { id:'claude-4-opus',         label:'Opus 4',              desc:'Most powerful',            color:'#a855f7', group:'Claude 4'     },
@@ -19,28 +19,32 @@ const MODELS = [
   // Claude 4.6
   { id:'claude-46-sonnet',      label:'Sonnet 4.6',          desc:'Latest · Balanced',        color:'#4e7fff', group:'Claude 4.6'   },
   { id:'claude-46-opus',        label:'Opus 4.6',            desc:'Latest · Most powerful',   color:'#a855f7', group:'Claude 4.6'   },
-  // Amazon Nova
-  { id:'nova-micro',            label:'Nova Micro',          desc:'Fastest Nova',             color:'#fbbf24', group:'Amazon'       },
-  { id:'nova-lite',             label:'Nova Lite',           desc:'Fast & affordable',        color:'#f59e0b', group:'Amazon'       },
-  { id:'nova-pro',              label:'Nova Pro',            desc:'Powerful',                 color:'#d97706', group:'Amazon'       },
-  { id:'nova-premier',          label:'Nova Premier',        desc:'Most capable Nova',        color:'#b45309', group:'Amazon'       },
-  // Cohere
-  { id:'cohere-command-a',      label:'Command A',           desc:'Reasoning focus',          color:'#6366f1', group:'Cohere'       },
-  // DeepSeek
-  { id:'deepseek-v3',           label:'DeepSeek V3',         desc:'Latest DeepSeek',          color:'#06b6d4', group:'DeepSeek'     },
-  { id:'deepseek-r1',           label:'DeepSeek R1',         desc:'Reasoning model',          color:'#0891b2', group:'DeepSeek'     },
-  // Meta
-  { id:'llama3-70b',            label:'Llama 3 70B',         desc:'Open-source powerhouse',   color:'#0284c7', group:'Meta'         },
-  // Mistral
-  { id:'mistral-large',         label:'Mistral Large',       desc:'Most capable',             color:'#f472b6', group:'Mistral'      },
-  { id:'mistral-medium',        label:'Mistral Medium',      desc:'Balanced',                 color:'#f9a8d4', group:'Mistral'      },
-  { id:'mistral-small',         label:'Mistral Small',       desc:'Fast & efficient',         color:'#fce7f3', group:'Mistral'      },
+  // Claude 4.7 available
+  { id:'claude-47-opus',        label:'Opus 4.7',            desc:'Most powerful',            color:'#7c3aed', group:'Claude 4.7'   },
+  // Amazon Nova - broken
+  //{ id:'nova-micro',            label:'Nova Micro',          desc:'Fastest Nova',             color:'#fbbf24', group:'Amazon'       },
+  //{ id:'nova-lite',             label:'Nova Lite',           desc:'Fast & affordable',        color:'#f59e0b', group:'Amazon'       },
+  //{ id:'nova-pro',              label:'Nova Pro',            desc:'Powerful',                 color:'#d97706', group:'Amazon'       },
+  //{ id:'nova-premier',          label:'Nova Premier',        desc:'Most capable Nova',        color:'#b45309', group:'Amazon'       },
+  // Cohere - idk what this even is
+  //{ id:'cohere-command-a',      label:'Command A',           desc:'Reasoning focus',          color:'#6366f1', group:'Cohere'       },
+  // DeepSeek broken
+  //{ id:'deepseek-v3',           label:'DeepSeek V3',         desc:'Latest DeepSeek',          color:'#06b6d4', group:'DeepSeek'     },
+  //{ id:'deepseek-r1',           label:'DeepSeek R1',         desc:'Reasoning model',          color:'#0891b2', group:'DeepSeek'     },
+  // Meta - broken
+  //{ id:'llama3-70b',            label:'Llama 3 70B',         desc:'Open-source powerhouse',   color:'#0284c7', group:'Meta'         },
+  // Mistral - outdated
+  //{ id:'mistral-large',         label:'Mistral Large',       desc:'Most capable',             color:'#f472b6', group:'Mistral'      },
+  //{ id:'mistral-medium',        label:'Mistral Medium',      desc:'Balanced',                 color:'#f9a8d4', group:'Mistral'      },
+  //{ id:'mistral-small',         label:'Mistral Small',       desc:'Fast & efficient',         color:'#fce7f3', group:'Mistral'      },
   // OpenAI — reasoning
   { id:'o1',                    label:'o1',                  desc:'Advanced reasoning',       color:'#0ea5e9', group:'OpenAI'       },
   { id:'o3',                    label:'o3',                  desc:'Most powerful reasoning',  color:'#38bdf8', group:'OpenAI'       },
   { id:'o3-mini',               label:'o3 Mini',             desc:'Efficient reasoning',      color:'#7dd3fc', group:'OpenAI'       },
   { id:'o4-mini',               label:'o4 Mini',             desc:'Latest reasoning',         color:'#bae6fd', group:'OpenAI'       },
   // OpenAI — GPT
+  { id:'gpt-54',                label:'GPT-5.4',             desc:'Most capable GPT-5',       color:'#047857', group:'OpenAI'       },
+  { id:'gpt-54-nano',           label:'GPT-5.4 Nano',        desc:'Fast GPT-5.4',             color:'#065f46', group:'OpenAI'       },
   { id:'gpt-52',                label:'GPT-5.2',             desc:'Latest OpenAI',            color:'#10b981', group:'OpenAI'       },
   { id:'gpt-5',                 label:'GPT-5',               desc:'Flagship',                 color:'#34d399', group:'OpenAI'       },
   { id:'gpt-5-mini',            label:'GPT-5 Mini',          desc:'Fast GPT-5',               color:'#6ee7b7', group:'OpenAI'       },
@@ -51,21 +55,23 @@ const MODELS = [
   { id:'gpt-41-mini',           label:'GPT-4.1 Mini',        desc:'Efficient',                color:'#064e3b', group:'OpenAI'       },
   { id:'gpt-41-nano',           label:'GPT-4.1 Nano',        desc:'Most affordable',          color:'#022c22', group:'OpenAI'       },
   // Google Gemini
+  { id:'gemini-31-pro',         label:'Gemini 3.1 Pro',      desc:'Most powerful Gemini',     color:'#dc2626', group:'Google'       },
+  { id:'gemini-31-flash-lite',  label:'3.1 Flash Lite',      desc:'Fast & cheap Gemini 3.1',  color:'#fca5a5', group:'Google'       },
   { id:'gemini-3-pro',          label:'Gemini 3 Pro',        desc:'Latest Gemini',            color:'#e11d48', group:'Google'       },
   { id:'gemini-25-pro',         label:'Gemini 2.5 Pro',      desc:'Best Gemini 2.5',          color:'#f43f5e', group:'Google'       },
   { id:'gemini-25-flash',       label:'Gemini 2.5 Flash',    desc:'Fast & smart',             color:'#fb7185', group:'Google'       },
   { id:'gemini-25-flash-lite',  label:'2.5 Flash Lite',      desc:'Cheapest Gemini 2.5',      color:'#fda4af', group:'Google'       },
   { id:'gemini-20-flash',       label:'Gemini 2.0 Flash',    desc:'Reliable',                 color:'#fecdd3', group:'Google'       },
   { id:'gemini-20-flash-lite',  label:'2.0 Flash Lite',      desc:'Budget option',            color:'#ffe4e6', group:'Google'       },
-  // Perplexity Sonar
-  { id:'sonar',                 label:'Sonar',               desc:'Web-grounded search',      color:'#8b5cf6', group:'Perplexity'   },
-  { id:'sonar-pro',             label:'Sonar Pro',           desc:'Advanced search',          color:'#a78bfa', group:'Perplexity'   },
-  { id:'sonar-deep-research',   label:'Sonar Deep Research', desc:'Deep web research',        color:'#c4b5fd', group:'Perplexity'   },
-  // Qwen
-  { id:'qwen3-max',             label:'Qwen3 Max',           desc:'Most capable Qwen',        color:'#f97316', group:'Qwen'         },
-  { id:'qwen35-plus',           label:'Qwen3.5 Plus',        desc:'Latest Qwen',              color:'#fb923c', group:'Qwen'         },
-  { id:'qwen-turbo',            label:'Qwen Turbo',          desc:'Fast Qwen',                color:'#fdba74', group:'Qwen'         },
-  { id:'qwen-flash',            label:'Qwen Flash',          desc:'Cheapest Qwen',            color:'#fed7aa', group:'Qwen'         },
+  // Perplexity Sonar-doesnt work
+ // { id:'sonar',                 label:'Sonar',               desc:'Web-grounded search',      color:'#8b5cf6', group:'Perplexity'   },
+  //{ id:'sonar-pro',             label:'Sonar Pro',           desc:'Advanced search',          color:'#a78bfa', group:'Perplexity'   },
+  //{ id:'sonar-deep-research',   label:'Sonar Deep Research', desc:'Deep web research',        color:'#c4b5fd', group:'Perplexity'   },
+  // Qwen - broken
+  //{ id:'qwen3-max',             label:'Qwen3 Max',           desc:'Most capable Qwen',        color:'#f97316', group:'Qwen'         },
+  //{ id:'qwen35-plus',           label:'Qwen3.5 Plus',        desc:'Latest Qwen',              color:'#fb923c', group:'Qwen'         },
+  //{ id:'qwen-turbo',            label:'Qwen Turbo',          desc:'Fast Qwen',                color:'#fdba74', group:'Qwen'         },
+  //{ id:'qwen-flash',            label:'Qwen Flash',          desc:'Cheapest Qwen',            color:'#fed7aa', group:'Qwen'         },
 ]
 
 const FILE_ICONS = {
